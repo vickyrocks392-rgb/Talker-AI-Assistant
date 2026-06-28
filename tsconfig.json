@@ -7,10 +7,12 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "esModuleInterop": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
+    "types": ["vite/client"]
   },
   "exclude": ["node_modules", "dist"]
 }
