@@ -1,0 +1,38 @@
+name: Talker AI CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Lint, Typecheck and Build App
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Run TypeScript Compiler (Type-check)
+      run: npm run lint
+
+    - name: Compile Production Build
+      run: npm run build
+      env:
+        NODE_ENV: production
+        GEMINI_API_KEY: "placeholder_to_prevent_build_error"

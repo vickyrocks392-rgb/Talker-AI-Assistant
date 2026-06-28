@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@550;600;700&display=swap');
+@import "leaflet/dist/leaflet.css";
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+}
+
+/* Hide navigation scrollbars for clean list sliders */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.leaflet-container {
+  background: #09090b;
+  font-family: var(--font-sans);
+}
+
+.leaflet-control-zoom a,
+.leaflet-control-attribution {
+  background: rgb(24 24 27 / 0.92) !important;
+  color: #f4f4f5 !important;
+  border-color: rgb(63 63 70 / 0.8) !important;
+}
+
+.leaflet-control-attribution a {
+  color: #f87171 !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  border-radius: 8px;
+}
+
+.talker-map-marker {
+  background: transparent;
+  border: 0;
+}

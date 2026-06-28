@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents an authenticated user in the system.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The unique user ID matching their request.auth.uid" },
+        "email": { "type": "string", "description": "User's email address" },
+        "displayName": { "type": "string", "description": "User's name" },
+        "personality": { "type": "string", "description": "User's personality description" },
+        "preferences": { "type": "string", "description": "User's general preferences" },
+        "likes": { "type": "string", "description": "User's likes" },
+        "dislikes": { "type": "string", "description": "User's dislikes" },
+        "experiences": { "type": "string", "description": "User's background/experiences" },
+        "pin": { "type": "string", "description": "4-digit pin code for secure login" },
+        "voicePassphrase": { "type": "string", "description": "Phrase registered for voice login" },
+        "securityEnabled": { "type": "boolean", "description": "Whether voice/pin security is active" },
+        "firstName": { "type": "string", "description": "User's first name for personal welcome" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["userId", "email", "createdAt", "updatedAt"]
+    },
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "Represents a conversational session or translation deck.",
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "string", "description": "Unique identifier of the chat" },
+        "userId": { "type": "string", "description": "Owner of the chat" },
+        "title": { "type": "string", "description": "Title of the chat" },
+        "mode": { "type": "string", "enum": ["chat", "translator"], "description": "The mode of the session" },
+        "summarized": { "type": "boolean", "description": "Whether the session title has been auto-summarized" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last dynamic update" }
+      },
+      "required": ["chatId", "userId", "title", "mode", "createdAt", "updatedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single spoken or written message inside a chat session.",
+      "type": "object",
+      "properties": {
+        "messageId": { "type": "string", "description": "Unique message identifier" },
+        "userId": { "type": "string", "description": "Writer of the message" },
+        "role": { "type": "string", "enum": ["user", "assistant"], "description": "The author role" },
+        "text": { "type": "string", "description": "The message text" },
+        "mapAction": { "type": "object", "description": "Optional map action details" },
+        "searchSources": { "type": "array", "description": "Optional array of search grounding sources" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of creation" }
+      },
+      "required": ["messageId", "userId", "role", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile records containing basic details."
+    },
+    "/chats/{chatId}": {
+      "schema": "ChatSession",
+      "description": "High-level translation/chat sessions owned by individual users."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Conversational text cards within a particular chat session."
+    }
+  }
+}

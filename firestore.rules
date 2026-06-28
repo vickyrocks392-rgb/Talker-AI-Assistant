@@ -1,0 +1,165 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global safety catch-all: Default deny everything
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- PHASE 3: Reusable Hardened Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper shortcuts
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- PHASE 4: Entity Validation Blueprints ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 5 && data.keys().size() <= 14
+        && data.userId is string
+        && data.userId.size() <= 128
+        && data.email is string
+        && data.email.size() <= 256
+        && data.displayName is string
+        && data.displayName.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!data.keys().contains('personality') || (data.personality is string && data.personality.size() <= 5000))
+        && (!data.keys().contains('preferences') || (data.preferences is string && data.preferences.size() <= 5000))
+        && (!data.keys().contains('likes') || (data.likes is string && data.likes.size() <= 5000))
+        && (!data.keys().contains('dislikes') || (data.dislikes is string && data.dislikes.size() <= 5000))
+        && (!data.keys().contains('experiences') || (data.experiences is string && data.experiences.size() <= 5000))
+        && (!data.keys().contains('pin') || (data.pin is string && data.pin.size() <= 16))
+        && (!data.keys().contains('voicePassphrase') || (data.voicePassphrase is string && data.voicePassphrase.size() <= 200))
+        && (!data.keys().contains('securityEnabled') || data.securityEnabled is bool)
+        && (!data.keys().contains('firstName') || (data.firstName is string && data.firstName.size() <= 100));
+    }
+
+    function isValidChat(data) {
+      return data.keys().hasAll(['chatId', 'userId', 'title', 'mode', 'createdAt', 'updatedAt'])
+        && (data.keys().size() == 6 || data.keys().size() == 7)
+        && data.chatId is string
+        && data.chatId.size() <= 128
+        && data.userId is string
+        && data.userId.size() <= 128
+        && data.title is string
+        && data.title.size() <= 200
+        && data.mode is string
+        && (data.mode == 'chat' || data.mode == 'translator')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!data.keys().contains('summarized') || data.summarized is bool);
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['messageId', 'userId', 'role', 'text', 'createdAt'])
+        && (data.keys().size() >= 5 && data.keys().size() <= 8)
+        && data.messageId is string
+        && data.messageId.size() <= 128
+        && data.userId is string
+        && data.userId.size() <= 128
+        && data.role is string
+        && (data.role == 'user' || data.role == 'assistant')
+        && data.text is string
+        && data.text.size() <= 10000
+        && data.createdAt is timestamp
+        // Optional Fields Type checks if present
+        && (!data.keys().contains('mapAction') || data.mapAction is map)
+        && (!data.keys().contains('searchSources') || data.searchSources is list);
+    }
+
+    // --- MATCH BLOCKS ---
+
+    // Users Collection Control
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isVerifiedUser() 
+                    && isOwner(userId) 
+                    && isValidId(userId)
+                    && isValidUser(incoming())
+                    && incoming().createdAt == request.time
+                    && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser()
+                    && isOwner(userId)
+                    && isValidUser(incoming())
+                    && incoming().userId == existing().userId
+                    && incoming().createdAt == existing().createdAt
+                    && incoming().updatedAt == request.time
+                    // Forbid role modification by enforcing whitelisted key changes
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt', 'personality', 'preferences', 'likes', 'dislikes', 'experiences']);
+    }
+
+    // Chat Sessions Collection Control
+    match /chats/{chatId} {
+      allow get: if isSignedIn() && isOwner(existing().userId);
+      // Explicitly enforce that lists are secure via resource.data.userId (no blanket queries)
+      allow list: if isSignedIn() && isOwner(resource.data.userId);
+      
+      allow create: if isVerifiedUser()
+                    && isValidId(chatId)
+                    && isValidChat(incoming())
+                    && isOwner(incoming().userId)
+                    && incoming().createdAt == request.time
+                    && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+                    && isOwner(existing().userId)
+                    && isValidChat(incoming())
+                    && incoming().userId == existing().userId
+                    && incoming().createdAt == existing().createdAt
+                    && incoming().updatedAt == request.time
+                    && incoming().diff(existing()).affectedKeys().hasAny(['title', 'updatedAt', 'mode', 'summarized']);
+
+      allow delete: if isSignedIn() && isOwner(existing().userId);
+    }
+
+    // Subcollection: Messages
+    match /chats/{chatId}/messages/{messageId} {
+      // derive permission from parent session's owner
+      function getParentChat() {
+        return get(/databases/$(database)/documents/chats/$(chatId));
+      }
+
+      allow get: if isSignedIn() && isOwner(getParentChat().data.userId);
+      allow list: if isSignedIn() && isOwner(getParentChat().data.userId);
+
+      allow create: if isVerifiedUser()
+                    && isValidId(messageId)
+                    && isValidMessage(incoming())
+                    // Must belong to the user writing it
+                    && isOwner(incoming().userId)
+                    // The parent chat must belong to this user
+                    && isOwner(getParentChat().data.userId)
+                    && incoming().createdAt == request.time;
+
+      allow update: if isVerifiedUser()
+                    && isOwner(getParentChat().data.userId)
+                    && isValidMessage(incoming())
+                    && incoming().messageId == existing().messageId
+                    && incoming().createdAt == existing().createdAt;
+
+      allow delete: if isSignedIn() && isOwner(getParentChat().data.userId);
+    }
+  }
+}
