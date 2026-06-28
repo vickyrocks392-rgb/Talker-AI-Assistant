@@ -243,12 +243,15 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
           </button>
 
           <div className="flex-1 relative">
-            <input
-              type="text"
+            <textarea
               value={inputText}
               onChange={(e) => onInputTextChange(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+                  e.preventDefault();
+                  onSendMessage(inputText);
+                } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
                   onSendMessage(inputText);
                 }
               }}
@@ -257,8 +260,14 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                   ? "Listening closely..." 
                   : `Type your helper request...`
               }
-              className="w-full bg-zinc-900 focus:bg-zinc-900/90 border border-zinc-800 focus:border-red-500/50 rounded-xl py-3 pl-3.5 pr-12 text-xs text-white focus:outline-none transition leading-normal font-sans"
+              rows={1}
+              className="w-full bg-zinc-900 focus:bg-zinc-900/90 border border-zinc-800 focus:border-red-500/50 rounded-xl py-3 pl-3.5 pr-12 text-xs text-white focus:outline-none transition leading-normal font-sans resize-none overflow-y-auto max-h-32"
               disabled={loading}
+              onInput={(e) => {
+                const target = e.currentTarget;
+                target.style.height = "auto";
+                target.style.height = Math.min(target.scrollHeight, 128) + "px";
+              }}
             />
 
             {/* Send Button */}

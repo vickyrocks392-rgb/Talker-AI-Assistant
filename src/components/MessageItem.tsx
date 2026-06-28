@@ -1,6 +1,6 @@
 import React from "react";
 // @ts-nocheck
-import { Copy, Check, Search, ExternalLink } from "lucide-react";
+import { Copy, Check, Search, ExternalLink, Volume2, Square } from "lucide-react";
 import { motion } from "motion/react";
 import { Message } from "../types";
 import { formatMessageTime } from "../lib/date-utils";
@@ -94,6 +94,21 @@ export const MessageItem: React.FC<MessageItemProps> = ({
 
             {/* Control buttons */}
             <div className="flex items-center gap-1.5 mt-3 pt-2 border-t border-zinc-900/60">
+              <button
+                onClick={() => onSpeak(msg.text, msg.messageId)}
+                className={`bg-black hover:bg-zinc-900 border px-2.5 py-1 rounded-lg cursor-pointer transition text-[10px] font-medium flex items-center gap-1 ${
+                  speakingMessageId === msg.messageId
+                    ? "border-red-500 text-red-400"
+                    : "border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                }`}
+                title={speakingMessageId === msg.messageId ? "Stop speaking" : "Read aloud"}
+              >
+                {speakingMessageId === msg.messageId ? (
+                  <><Square className="w-3 h-3" /><span>Stop</span></>
+                ) : (
+                  <><Volume2 className="w-3 h-3" /><span>Listen</span></>
+                )}
+              </button>
               <button
                 onClick={() => onCopy(msg.text, msg.messageId)}
                 className="bg-black hover:bg-zinc-900 border border-zinc-900 px-2.5 py-1 rounded-lg text-zinc-400 hover:text-zinc-200 cursor-pointer transition text-[10px] font-medium flex items-center gap-1"

@@ -79,6 +79,16 @@ export default function App() {
     isOnline,
   });
 
+  // 3a. Global voice preference: auto-read AI replies (default OFF)
+  const [autoReadReplies, setAutoReadReplies] = useState<boolean>(() => {
+    const stored = localStorage.getItem("talker_auto_read_replies");
+    return stored === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("talker_auto_read_replies", String(autoReadReplies));
+  }, [autoReadReplies]);
+
   // 4. Chat session list, syncing, and messages pipelines hook
   const {
     chats,
@@ -101,7 +111,7 @@ export default function App() {
     authLoading,
     persona,
     onBotReply: (replyText, msgId) => {
-      if (voiceSpeechEnabled) {
+      if (autoReadReplies && voiceSpeechEnabled) {
         speakTextOutLoud(replyText, msgId);
       } else if (handsFreeMode) {
         startVoiceCapture();
@@ -396,6 +406,8 @@ export default function App() {
               geminiQuotaExceeded={geminiQuotaExceeded}
               voiceSpeechEnabled={voiceSpeechEnabled}
               onToggleVoiceSpeech={setVoiceSpeechEnabled}
+              autoReadReplies={autoReadReplies}
+              onToggleAutoReadReplies={setAutoReadReplies}
               currentUser={currentUser}
               onLogin={loginWithGoogle}
               onLogout={logoutOfApp}

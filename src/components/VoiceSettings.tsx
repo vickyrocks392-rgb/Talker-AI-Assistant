@@ -16,6 +16,8 @@ interface VoiceSettingsProps {
   geminiQuotaExceeded: boolean;
   voiceSpeechEnabled: boolean;
   onToggleVoiceSpeech: (enabled: boolean) => void;
+  autoReadReplies: boolean;
+  onToggleAutoReadReplies: (enabled: boolean) => void;
   currentUser: FirebaseUser | null;
   onLogin: () => Promise<void>;
   onLogout: () => Promise<void>;
@@ -59,6 +61,8 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
   geminiQuotaExceeded,
   voiceSpeechEnabled,
   onToggleVoiceSpeech,
+  autoReadReplies,
+  onToggleAutoReadReplies,
   currentUser,
   onLogin,
   onLogout,
@@ -510,6 +514,18 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
                 >
                   {voiceSpeechEnabled ? <Volume2 className="w-4 h-4 animate-pulse" /> : <VolumeX className="w-4 h-4" />}
                   <span>{voiceSpeechEnabled ? "Speech ON" : "Muted"}</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between border-t border-zinc-900/60 pt-3">
+                <span className="text-zinc-300 text-xs font-medium">☐ Automatically read AI replies</span>
+                <button 
+                  onClick={() => onToggleAutoReadReplies(!autoReadReplies)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition text-xs font-bold cursor-pointer ${
+                    autoReadReplies ? "bg-red-950/20 border-red-500/30 text-red-400" : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  <span>{autoReadReplies ? "ON" : "OFF"}</span>
                 </button>
               </div>
             </div>
