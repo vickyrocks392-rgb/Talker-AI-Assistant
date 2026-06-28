@@ -25,6 +25,33 @@ const logger = createLogger("GroqProvider");
 const GROQ_API_BASE = "https://api.groq.com/openai/v1";
 
 /**
+ * Safely parse a Response as JSON, avoiding the Node.js ByteString bug
+ * that occurs when the response body contains non-Latin-1 characters
+ * (code points > 255, e.g. Cyrillic, Chinese, emoji).
+ *
+ * Node.js's built-in fetch (undici) internally uses ByteString conversion
+ * for response.json() and response.text(), which throws:
+ *   "Cannot convert argument to a ByteString because the character at
+ *    index N has a value of X which is greater than 255."
+ *
+ * Reading the body as ArrayBuffer and decoding with TextDecoder avoids
+ * this bug entirely.
+ */
+async function safeJsonParse<T>(response: Response): Promise<T> {
+  const arrayBuffer = await response.arrayBuffer();
+  const text = new TextDecoder().decode(arrayBuffer);
+  return JSON.parse(text) as T;
+}
+
+/**
+ * Safely read a Response body as text, avoiding the same ByteString bug.
+ */
+async function safeText(response: Response): Promise<string> {
+  const arrayBuffer = await response.arrayBuffer();
+  return new TextDecoder().decode(arrayBuffer);
+}
+
+/**
  * Groq provider implementation.
  * Adapts the OpenAI-compatible Groq API to the AIProvider interface.
  */
@@ -71,7 +98,7 @@ export class GroqProvider implements AIProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        const errorText = await safeText(response);
         const error: Error & { status?: number } = new Error(
           `Groq API error ${response.status}: ${errorText}`,
         );
@@ -79,7 +106,7 @@ export class GroqProvider implements AIProvider {
         throw error;
       }
 
-      const data = (await response.json()) as GroqResponse;
+      const data = await safeJsonParse<GroqResponse>(response);
 
       // Adapt Groq response to OllamaResponse shape
       const adapted: OllamaResponse = {
@@ -136,7 +163,7 @@ export class GroqProvider implements AIProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        const errorText = await safeText(response);
         throw new Error(`Groq API error ${response.status}: ${errorText}`);
       }
 
@@ -254,11 +281,11 @@ export class GroqProvider implements AIProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        const errorText = await safeText(response);
         throw new Error(`Groq API error ${response.status}: ${errorText}`);
       }
 
-      const data = (await response.json()) as GroqResponse;
+      const data = await safeJsonParse<GroqResponse>(response);
       return data.choices[0]?.message?.content ?? "";
     });
   }
