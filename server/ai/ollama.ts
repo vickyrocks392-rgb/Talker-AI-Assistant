@@ -21,7 +21,7 @@ const logger = createLogger("OllamaProvider");
  * Ollama provider implementation.
  * All communication through native /api/chat endpoint.
  */
-class OllamaProvider implements AIProvider {
+export class OllamaProvider implements AIProvider {
   private baseUrl: string;
   private modelName: string;
 
@@ -81,7 +81,7 @@ class OllamaProvider implements AIProvider {
   /**
    * Stream a chat response from Ollama.
    * Yields tokens progressively as they are generated.
-   * 
+   *
    * Note: This is an async generator that yields OllamaStreamChunk objects.
    * The client should listen to these and display them in real-time.
    */
@@ -193,6 +193,7 @@ class OllamaProvider implements AIProvider {
 
 /**
  * Create and return the singleton Ollama provider.
+ * @deprecated Use getAIProvider() from provider.ts instead.
  */
 let provider: OllamaProvider | null = null;
 

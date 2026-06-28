@@ -5,7 +5,7 @@
 
 import { ConversationMessage } from "./types";
 import { createSummarizeSystemPrompt } from "./prompts";
-import { getOllamaProvider } from "./ollama";
+import { getAIProvider } from "./provider";
 import { parseSummaryResponse } from "./parser";
 import { createLogger } from "../utils/logger";
 import { getUserFriendlyErrorMessage } from "../utils/errors";
@@ -34,7 +34,7 @@ export async function summarizeConversation(
 Conversation transcript:
 ${conversationText}`;
 
-    const provider = getOllamaProvider();
+    const provider = getAIProvider();
     const response = await provider.summarize([
       { role: "system", content: createSummarizeSystemPrompt() },
       { role: "user", content: prompt },

@@ -8,8 +8,8 @@
 import { Router } from "express";
 import { getConfig } from "../config/env";
 import { getActiveModel, getOllamaBaseUrl } from "../ai/config";
+import { getAIProvider } from "../ai/provider";
 import { APP_NAME, APP_VERSION } from "../config/version";
-import { getOllamaProvider } from "../ai/ollama";
 
 const router = Router();
 
@@ -27,36 +27,45 @@ router.get("/health", (_req, res) => {
 
 /**
  * GET /ready
- * Readiness probe — returns 200 only when the AI provider is initialised.
- * The Ollama server is reachable (best-effort).
+ * Readiness probe — returns 200 only when the AI provider is initialised
+ * and reachable (best-effort connectivity check).
  */
 router.get("/ready", async (_req, res) => {
   const config = getConfig();
 
   // Verify the provider singleton exists.
   try {
-    getOllamaProvider();
+    getAIProvider();
   } catch {
     res.status(503).json({ status: "not ready", reason: "AI provider not initialised" });
     return;
   }
 
-  // Quick connectivity check against the Ollama server.
+  // Quick connectivity check against the active provider.
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2_000);
 
-    const response = await fetch(`${config.ollama.baseUrl}/api/tags`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
+    if (config.aiProvider === "ollama") {
+      const response = await fetch(`${config.ollama.baseUrl}/api/tags`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
 
-    if (!response.ok) {
-      res.status(503).json({ status: "not ready", reason: "Ollama server unreachable" });
-      return;
+      if (!response.ok) {
+        res.status(503).json({ status: "not ready", reason: "Ollama server unreachable" });
+        return;
+      }
+    } else if (config.aiProvider === "groq") {
+      // For Groq, verify the API key is configured (no live call to avoid rate limits)
+      clearTimeout(timeout);
+      if (!config.groq.apiKey) {
+        res.status(503).json({ status: "not ready", reason: "Groq API key not configured" });
+        return;
+      }
     }
   } catch {
-    res.status(503).json({ status: "not ready", reason: "Ollama server unreachable" });
+    res.status(503).json({ status: "not ready", reason: "AI provider unreachable" });
     return;
   }
 

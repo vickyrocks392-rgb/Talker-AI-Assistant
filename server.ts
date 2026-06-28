@@ -28,13 +28,11 @@
 
 import express from "express";
 import path from "path";
-import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 
 // Configuration
 import { getConfig } from "./server/config/env";
-import { getActiveModel, getOllamaBaseUrl } from "./server/ai/config";
-import { getOllamaProvider } from "./server/ai/ollama";
+import { getAIProvider } from "./server/ai/provider";
 
 // Utilities
 import { createLogger } from "./server/utils/logger";
@@ -48,9 +46,6 @@ import healthRouter from "./server/routes/health";
 
 // Middleware
 import { apiNotFoundHandler, globalErrorHandler } from "./server/middleware/error";
-
-// Load environment variables
-dotenv.config();
 
 const config = getConfig();
 const logger = createLogger("Server");
@@ -80,14 +75,18 @@ app.use(globalErrorHandler);
 async function start() {
   try {
     logger.info("Validating configuration...");
-    const model = getActiveModel();
-    const baseUrl = getOllamaBaseUrl();
 
-    logger.info(`Using model: ${model.name}`);
-    logger.info(`Ollama endpoint: ${baseUrl}/api/chat`);
+    // Log provider-specific info
+    if (config.aiProvider === "groq") {
+      logger.info(`Using model: ${config.groq.modelName}`);
+      logger.info(`AI provider: Groq`);
+    } else {
+      logger.info(`Using model: ${config.ollama.modelName}`);
+      logger.info(`Ollama endpoint: ${config.ollama.baseUrl}/api/chat`);
+    }
 
     // Warm up the provider (lazy singleton initialisation)
-    getOllamaProvider();
+    getAIProvider();
     logger.info("AI provider initialized");
 
     // Frontend serving
@@ -116,8 +115,12 @@ async function start() {
       logger.info(`║  Talker AI Backend Started           ║`);
       logger.info(`╚══════════════════════════════════════╝\n`);
       logger.info(`Server:   http://localhost:${config.server.port}`);
-      logger.info(`Model:    ${model.name}`);
-      logger.info(`Ollama:   ${baseUrl}\n`);
+      logger.info(`Model:    ${config.aiProvider === "groq" ? config.groq.modelName : config.ollama.modelName}`);
+      if (config.aiProvider === "ollama") {
+        logger.info(`Ollama:   ${config.ollama.baseUrl}\n`);
+      } else {
+        logger.info(`\n`);
+      }
       logger.info(`API Endpoints:`);
       logger.info(`  POST   /api/chat       Chat with streaming support`);
       logger.info(`  POST   /api/summarize  Generate conversation title`);
@@ -131,11 +134,18 @@ async function start() {
   } catch (error) {
     logger.error("Failed to start server", error);
     if (error instanceof ConfigError) {
-      logger.error("\nConfiguration Error. Please check:");
-      logger.error("1. OLLAMA_URL is set correctly (default: http://127.0.0.1:11434)");
-      logger.error("2. OLLAMA_MODEL exists on your Ollama installation");
-      logger.error("3. Run 'ollama list' to see available models");
-      logger.error("4. Run 'ollama pull <model>' to install a model\n");
+      if (config.aiProvider === "groq") {
+        logger.error("\nConfiguration Error. Please check:");
+        logger.error("1. GROQ_API_KEY is set correctly");
+        logger.error("2. GROQ_MODEL is set correctly (default: llama-3.3-70b-versatile)");
+        logger.error("3. Visit https://console.groq.com/keys to get an API key\n");
+      } else {
+        logger.error("\nConfiguration Error. Please check:");
+        logger.error("1. OLLAMA_URL is set correctly (default: http://127.0.0.1:11434)");
+        logger.error("2. OLLAMA_MODEL exists on your Ollama installation");
+        logger.error("3. Run 'ollama list' to see available models");
+        logger.error("4. Run 'ollama pull <model>' to install a model\n");
+      }
     }
     process.exit(1);
   }

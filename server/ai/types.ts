@@ -6,7 +6,7 @@
  * `shared/types.ts` and are re-exported here so existing import paths
  * (`from "./types"`, `from "../ai/types"`) keep working.
  *
- * This module only declares server-internal types: Ollama wire formats,
+ * This module only declares server-internal types: provider wire formats,
  * the AIProvider abstraction, model configuration, and parsed model output.
  */
 
@@ -73,7 +73,56 @@ export interface OllamaResponse {
 export type OllamaStreamChunk = OllamaResponse;
 
 /**
- * Interface for AI providers (Ollama, and future OpenAI, Gemini, etc.).
+ * Groq API chat completion request body.
+ * See: https://console.groq.com/docs/api-reference#chat
+ */
+export interface GroqChatRequest {
+  model: string;
+  messages: OllamaMessage[];
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  stream?: boolean;
+  response_format?: { type: "json_object" };
+}
+
+/**
+ * Groq API chat completion response (non-streaming).
+ */
+export interface GroqResponse {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: {
+    index: number;
+    message: OllamaMessage;
+    finish_reason: string;
+  }[];
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+/**
+ * A single chunk from a Groq streaming response.
+ */
+export interface GroqStreamChunk {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: {
+    index: number;
+    delta: Partial<OllamaMessage>;
+    finish_reason: string | null;
+  }[];
+}
+
+/**
+ * Interface for AI providers (Ollama, Groq, and future providers).
  * Allows the backend to support multiple providers without route changes.
  */
 export interface AIProvider {
@@ -93,7 +142,7 @@ export interface AIProvider {
 
 /** Configuration for a supported model. */
 export interface ModelConfig {
-  provider: "ollama";
+  provider: "ollama" | "groq";
   name: string;
   contextLength?: number;
 }
@@ -103,4 +152,3 @@ export interface ModelResponseParsed {
   replyText: string;
   mapAction: MapAction;
 }
-

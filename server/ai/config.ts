@@ -59,4 +59,3 @@ export function getActiveModel(): ModelConfig {
 export function getOllamaBaseUrl(): string {
   return getConfig().ollama.baseUrl;
 }
-

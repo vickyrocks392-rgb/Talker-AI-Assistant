@@ -7,7 +7,7 @@
 import type express from "express";
 import { createChatSystemPrompt } from "../ai/prompts";
 import { parseChatResponse, StreamReplyExtractor } from "../ai/parser";
-import { getOllamaProvider } from "../ai/ollama";
+import { getAIProvider } from "../ai/provider";
 import { validateChatRequest } from "../utils/validation";
 import { OllamaMessage, ChatResponse } from "../ai/types";
 import { createLogger } from "../utils/logger";
@@ -46,7 +46,7 @@ export async function handleChat(
     // Current user message
     messages.push({ role: "user", content: text });
 
-    const provider = getOllamaProvider();
+    const provider = getAIProvider();
 
     // ── Streaming path (SSE) ──────────────────────────────────────
     if (stream === true) {

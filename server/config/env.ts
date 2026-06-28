@@ -5,7 +5,11 @@
  * Required variables are validated eagerly when getConfig() is first called.
  */
 
+import dotenv from "dotenv";
 import { ConfigError } from "../utils/errors";
+
+// Load .env as early as possible — before any module calls getConfig()
+dotenv.config();
 
 // ── Public configuration shape ──────────────────────────────────────
 
@@ -21,6 +25,11 @@ export interface OllamaConfig {
   modelName: string;
 }
 
+export interface GroqConfig {
+  apiKey: string;
+  modelName: string;
+}
+
 export interface ViteDevConfig {
   hmrPort: number | undefined;
   disableHmr: boolean;
@@ -28,7 +37,9 @@ export interface ViteDevConfig {
 
 export interface AppConfig {
   server: ServerConfig;
+  aiProvider: "ollama" | "groq";
   ollama: OllamaConfig;
+  groq: GroqConfig;
   vite: ViteDevConfig;
 }
 
@@ -48,12 +59,25 @@ function loadConfig(): AppConfig {
 
   const nodeEnv = process.env.NODE_ENV || "development";
 
+  // --- AI Provider ---
+  const aiProviderRaw = process.env.AI_PROVIDER || "ollama";
+  if (aiProviderRaw !== "ollama" && aiProviderRaw !== "groq") {
+    throw new ConfigError(
+      `Invalid AI_PROVIDER: "${aiProviderRaw}". Must be "ollama" or "groq".`,
+    );
+  }
+  const aiProvider = aiProviderRaw as "ollama" | "groq";
+
   // --- Ollama ---
   const baseUrl = (process.env.OLLAMA_URL || "http://127.0.0.1:11434").replace(
     /\/$/,
     "",
   );
   const modelName = process.env.OLLAMA_MODEL || "llama3.2:3b";
+
+  // --- Groq ---
+  const groqApiKey = process.env.GROQ_API_KEY || "";
+  const groqModelName = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
   // --- Vite dev-server ---
   const hmrPortStr = process.env.HMR_PORT;
@@ -67,7 +91,9 @@ function loadConfig(): AppConfig {
       isProduction: nodeEnv === "production",
       isDevelopment: nodeEnv !== "production",
     },
+    aiProvider,
     ollama: { baseUrl, modelName },
+    groq: { apiKey: groqApiKey, modelName: groqModelName },
     vite: { hmrPort, disableHmr },
   };
 }
