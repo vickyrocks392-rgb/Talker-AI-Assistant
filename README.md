@@ -1,11 +1,66 @@
-# Talker AI — Full-Stack Voice Companion
+# Talker AI Assistant
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)](https://www.typescriptlang.org/)
-[![Node](https://img.shields.io/badge/Node-%3E%3D18-brightgreen)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-19-blueviolet)](https://react.dev/)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+**Full‑stack AI assistant powered by React, TypeScript, Express, and Ollama**
 
-Talker AI is a **production-quality conversational AI assistant** that runs local LLMs via [Ollama](https://ollama.ai). It remembers user preferences, searches OpenStreetMap locations, provides turn-by-turn directions, and supports hands-free voice interaction — all with zero API key costs for maps.
+Talker AI Assistant is a modern, production‑ready conversational AI platform that runs locally using Ollama’s large language models. It provides a seamless chat experience with voice interaction, real‑time streaming, and rich markdown rendering, all while keeping user data synchronized via Firebase.
+
+Built to give developers and teams a privacy‑first, extensible solution, the project combines a responsive React UI with a robust Express backend. It enables offline AI capabilities, integrates OpenStreetMap for location‑based features, and supports authentication and data persistence without external API costs.
+
+### Key Features
+- Local LLM with Ollama
+- Streaming chat
+- Markdown & syntax‑highlighted code rendering
+- Conversation memory
+- Voice interaction
+- Firebase Authentication & Firestore sync
+- OpenStreetMap integration
+- Modular backend architecture
+- Responsive React UI
+
+## Tech Stack
+
+| Category | Technologies |
+|----------|--------------|
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS |
+| Backend | Express.js, Node.js |
+| AI | Ollama (Llama 3.2) |
+| Authentication | Firebase Authentication |
+| Database | Cloud Firestore |
+| Maps | OpenStreetMap, Leaflet, Nominatim, OSRM |
+| Language | TypeScript |
+
+## Screenshots
+
+### Python Code Generation
+
+![Python Code](screenshots/python-code.png)
+
+---
+
+### Essay Generation
+
+![Essay Generation](screenshots/essay-generation.png)
+
+---
+
+### Markdown Table Rendering
+
+![Markdown Table](screenshots/markdown-table.png)
+
+---
+
+### Recursion Explanation
+
+![Recursion Example](screenshots/recursion-example.png)
+
+---
+
+### Translation
+
+![Translation](screenshots/translation.png)
+
+#### Demo
+*(Add demo link or GIF here)*
 
 ---
 
