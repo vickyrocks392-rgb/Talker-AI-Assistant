@@ -59,8 +59,13 @@ Built to give developers and teams a privacy‑first, extensible solution, the p
 
 ![Translation](screenshots/translation.png)
 
-#### Demo
-*(Add demo link or GIF here)*
+## 🌐 Live Demo
+
+**Try Talker AI here:**
+
+https://talker-ai-assistant.onrender.com
+
+> **Note:** The application is hosted on Render's free tier. The first request after inactivity may take up to 30–60 seconds while the service wakes up.
 
 ---
 
