@@ -25,6 +25,26 @@ const logger = createLogger("GroqProvider");
 const GROQ_API_BASE = "https://api.groq.com/openai/v1";
 
 /**
+ * Temporary diagnostic: log API key properties without revealing the key itself.
+ * Helps debug the ByteString error on Render where non-ASCII chars may exist.
+ */
+function diagnoseApiKey(key: string): void {
+  const chars = key.split("");
+  const codePoints = chars.map((c) => c.charCodeAt(0));
+  const allAscii = codePoints.every((cp) => cp <= 127);
+  const nonAscii = chars
+    .map((c, i) => ({ index: i, codePoint: c.charCodeAt(0), char: c }))
+    .filter((x) => x.codePoint > 127);
+
+  logger.info("[DIAGNOSTIC] API key length", { length: key.length });
+  logger.info("[DIAGNOSTIC] All characters ASCII (<=127)", { allAscii });
+  logger.info("[DIAGNOSTIC] Code points of all characters", { codePoints });
+  if (nonAscii.length > 0) {
+    logger.warn("[DIAGNOSTIC] Non-ASCII characters found", { nonAscii });
+  }
+}
+
+/**
  * Safely parse a Response as JSON, avoiding the Node.js ByteString bug
  * that occurs when the response body contains non-Latin-1 characters
  * (code points > 255, e.g. Cyrillic, Chinese, emoji).
@@ -88,6 +108,7 @@ export class GroqProvider implements AIProvider {
     });
 
     return withRetry(async () => {
+      diagnoseApiKey(this.apiKey);
       const response = await fetch(`${GROQ_API_BASE}/chat/completions`, {
         method: "POST",
         headers: {
@@ -153,6 +174,7 @@ export class GroqProvider implements AIProvider {
     });
 
     try {
+      diagnoseApiKey(this.apiKey);
       const response = await fetch(`${GROQ_API_BASE}/chat/completions`, {
         method: "POST",
         headers: {
@@ -265,6 +287,7 @@ export class GroqProvider implements AIProvider {
     });
 
     return withRetry(async () => {
+      diagnoseApiKey(this.apiKey);
       const response = await fetch(`${GROQ_API_BASE}/chat/completions`, {
         method: "POST",
         headers: {
