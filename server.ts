@@ -45,6 +45,11 @@ import { handleTTS } from "./server/routes/tts";
 import healthRouter from "./server/routes/health";
 import conversationsRouter from "./server/routes/conversations";
 
+// Tool Engine
+import { ToolRegistry } from "./server/ai/tools/registry";
+import { CalculatorTool } from "./server/ai/tools/calculator";
+import { DateTimeTool } from "./server/ai/tools/datetime";
+
 // Middleware
 import { apiNotFoundHandler, globalErrorHandler } from "./server/middleware/error";
 
@@ -90,6 +95,12 @@ async function start() {
     // Warm up the provider (lazy singleton initialisation)
     getAIProvider();
     logger.info("AI provider initialized");
+
+    // ── Tool Engine registration ──────────────────────────────────
+    const registry = ToolRegistry.getInstance();
+    registry.register(new CalculatorTool());
+    registry.register(new DateTimeTool());
+    logger.info(`Tool Engine initialized with ${registry.list().length} tools`);
 
     // Frontend serving
     if (config.server.isDevelopment) {

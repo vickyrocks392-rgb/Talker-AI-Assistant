@@ -1,8 +1,16 @@
 /**
  * ConversationService — business logic for chat conversations.
  *
- * Orchestrates history loading, AI generation, and persistence.
- * The Chat Route becomes a thin HTTP controller that delegates here.
+ * Orchestrates history loading, tool planning/execution, AI generation,
+ * and persistence.
+ *
+ * Phase 3B: The Tool Engine is integrated into the pipeline.
+ *  1. Receive the user message.
+ *  2. Call the deterministic planner.
+ *  3. If a tool matches → execute it → inject the structured result
+ *     into the prompt sent to the LLM.
+ *  4. The LLM generates the final natural-language response.
+ *  5. If no tool matches → continue exactly as before.
  */
 
 import { createChatSystemPrompt } from "../prompts";
@@ -11,8 +19,11 @@ import { getAIProvider } from "../provider";
 import { createLogger } from "../../utils/logger";
 import { getUserFriendlyErrorMessage } from "../../utils/errors";
 import { memoryService } from "../../memory/service";
+import { plan } from "../tools/planner";
+import { executeTool } from "../tools/executor";
 import type { OllamaMessage, ChatResponse } from "../types";
 import type { Persona, ConversationMessage } from "../types";
+import type { ToolResult, CalculatorResult, DateTimeResult } from "../tools/types";
 
 const logger = createLogger("ConversationService");
 
@@ -72,6 +83,148 @@ function buildMessages(
   return messages;
 }
 
+// ── Tool context formatters ──────────────────────────────────────────
+
+/**
+ * Format a successful calculator result into readable text.
+ */
+function formatCalculatorOutput(data: CalculatorResult): string {
+  return [
+    `Expression:`,
+    `${data.expression}`,
+    ``,
+    `Answer:`,
+    `${data.result}`,
+  ].join("\n");
+}
+
+/**
+ * Format a successful date-time result into readable text.
+ */
+function formatDateTimeOutput(data: DateTimeResult): string {
+  return [
+    `Current Date:`,
+    `${data.date}`,
+    ``,
+    `Current Time:`,
+    `${data.time}`,
+    ``,
+    `Timezone:`,
+    `${data.timezone}`,
+    ``,
+    `ISO Timestamp:`,
+    `${data.iso}`,
+  ].join("\n");
+}
+
+/**
+ * Build a strongly-worded, tool-specific system prompt that tells the LLM
+ * the tool output is authoritative and must be used to answer the user.
+ *
+ * The output is formatted as readable text, not raw JSON, so the LLM
+ * can consume it naturally.
+ *
+ * To add a new tool, add a new `case` to the switch statement and a
+ * corresponding `format*Output` function above.
+ */
+function buildToolContext(
+  toolName: string,
+  result: ToolResult,
+): string {
+  // ── Authoritative preamble ──────────────────────────────────────
+  const preamble =
+    `A system tool has already been executed. ` +
+    `The tool output below is authoritative. ` +
+    `Do NOT say you cannot access this information. ` +
+    `Do NOT ignore this tool result. ` +
+    `Do NOT recalculate or invent values. ` +
+    `Use this tool result to answer the user's question naturally.`;
+
+  // ── Tool-specific body ──────────────────────────────────────────
+  let body: string;
+
+  if (!result.success) {
+    // Tool failed — report the error clearly
+    body = `Error: ${(result as { success: false; error: string }).error}`;
+  } else {
+    switch (toolName) {
+      case "calculator":
+        body = formatCalculatorOutput(
+          (result as { success: true; data: CalculatorResult }).data,
+        );
+        break;
+
+      case "datetime":
+        body = formatDateTimeOutput(
+          (result as { success: true; data: DateTimeResult }).data,
+        );
+        break;
+
+      default:
+        // Fallback for future tools: show the raw data
+        body = JSON.stringify(
+          (result as { success: true; data: unknown }).data,
+          null,
+          2,
+        );
+        break;
+    }
+  }
+
+  return [
+    preamble,
+    ``,
+    `Tool:`,
+    `${toolName}`,
+    ``,
+    `Tool Output:`,
+    body,
+  ].join("\n");
+}
+
+/**
+ * Run the deterministic planner. If a tool matches, execute it and
+ * inject a strongly-worded tool context message so the LLM treats
+ * the tool output as authoritative.
+ *
+ * @returns The (possibly augmented) messages array.
+ */
+async function injectToolResult(
+  text: string,
+  messages: OllamaMessage[],
+): Promise<OllamaMessage[]> {
+  const toolRequest = plan(text);
+
+  // No tool matches — fall through to normal chat pipeline
+  if (!toolRequest) {
+    return messages;
+  }
+
+  logger.info(`Tool matched: ${toolRequest.toolName}`);
+
+  // Execute the tool
+  const result = await executeTool(toolRequest);
+
+  // Build a strongly-worded, readable tool context
+  const toolContext = buildToolContext(toolRequest.toolName, result);
+
+  if (result.success) {
+    logger.info(`Tool "${toolRequest.toolName}" succeeded`);
+  } else {
+    logger.warn(`Tool "${toolRequest.toolName}" failed: ${(result as { success: false; error: string }).error}`);
+  }
+
+  // Inject the tool context as a system message right before the user message.
+  // The LLM will use this authoritative context to generate a natural-language response.
+  // Insert it before the last message (which is the current user message).
+  messages.splice(messages.length - 1, 0, {
+    role: "system",
+    content: toolContext,
+  });
+
+  return messages;
+}
+
 /**
  * Handle a non-streaming chat request.
  */
@@ -80,7 +233,11 @@ export async function handleNonStreaming(
 ): Promise<ChatResponse> {
   const { text, conversationId, history, persona } = request;
 
-  const messages = buildMessages(text, conversationId, history, persona);
+  let messages = buildMessages(text, conversationId, history, persona);
+
+  // Phase 3B: Run the tool planner and inject tool results if applicable
+  messages = await injectToolResult(text, messages);
+
   const provider = getAIProvider();
 
   const response = await provider.chat({ messages });
@@ -121,7 +278,13 @@ export async function handleStreaming(
 ): Promise<void> {
   const { text, conversationId, history, persona } = request;
 
-  const messages = buildMessages(text, conversationId, history, persona);
+  let messages = buildMessages(text, conversationId, history, persona);
+
+  // Phase 3B: Run the tool planner and inject tool results if applicable
+  // This happens BEFORE streaming starts, so streaming continues to work
+  // without any frontend changes.
+  messages = await injectToolResult(text, messages);
+
   const provider = getAIProvider();
 
   let fullContent = "";
