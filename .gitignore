@@ -10,3 +10,5 @@ coverage/
 storage/*.db
 storage/*.db-shm
 storage/*.db-wal
+# ChromaDB runtime files
+storage/rag/

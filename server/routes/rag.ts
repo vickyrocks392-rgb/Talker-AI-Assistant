@@ -4,10 +4,11 @@
  * POST /api/rag/upload
  *
  * Accepts a PDF file via multipart/form-data, validates it, extracts text
- * and metadata using the PdfLoader, and returns a structured JSON response.
+ * and metadata using the PdfLoader, then runs the full indexing pipeline:
  *
- * This endpoint is intentionally standalone — it does NOT perform chunking,
- * embedding, or vector storage. Those stages are added in later phases.
+ *   Extract Text → Split into Chunks → Generate Embeddings → Store in ChromaDB
+ *
+ * Returns a structured JSON response with indexing statistics.
  *
  * @module server/routes/rag
  */
@@ -16,8 +17,12 @@ import { Router } from "express";
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import { PdfLoader } from "../ai/rag/pdfLoader";
+import { RagSplitter } from "../ai/rag/splitter";
+import { RagEmbeddings } from "../ai/rag/embeddings";
+import { RagVectorStore } from "../ai/rag/vectorstore";
 import { createLogger } from "../utils/logger";
 import { ValidationError } from "../utils/errors";
+import type { RagDocument } from "../ai/rag/types";
 
 const logger = createLogger("RagRoute");
 
@@ -52,12 +57,17 @@ const router = Router();
 /**
  * POST /api/rag/upload
  *
- * Ingest a PDF document.
+ * Ingest a PDF document and index it into the vector store.
+ *
+ * Pipeline:
+ *   1. Validate and load the PDF via PdfLoader
+ *   2. Split the extracted text into chunks via RagSplitter
+ *   3. Generate embeddings for each chunk via RagEmbeddings
+ *   4. Store chunks + embeddings in ChromaDB via RagVectorStore
+ *   5. Return indexing statistics
  *
  * Request:  multipart/form-data with a single "file" field.
- * Response: JSON with document metadata.
- *
- * @returns {Object} 201 JSON with documentId, filename, pageCount, textLength, status
+ * Response: JSON with documentId, filename, pageCount, textLength, chunkCount, status
  */
 router.post(
   "/rag/upload",
@@ -97,7 +107,7 @@ router.post(
 
       logger.info(`Received PDF upload: ${file.originalname} (${file.size} bytes)`);
 
-      // Use PdfLoader to extract text and metadata
+      // ── Step 1: Extract text via PdfLoader ────────────────────────
       const loader = new PdfLoader();
       const result = await loader.load(file.buffer);
 
@@ -106,15 +116,47 @@ router.post(
       const textLength = result.content.length;
 
       logger.info(
-        `PDF ingested: id=${documentId} filename=${file.originalname} pages=${pageCount} chars=${textLength}`,
+        `PDF extracted: id=${documentId} filename=${file.originalname} pages=${pageCount} chars=${textLength}`,
       );
 
+      // ── Step 2: Split into chunks via RagSplitter ─────────────────
+      const splitter = new RagSplitter();
+      const chunks = await splitter.splitText(result.content, {
+        documentId,
+        filename: file.originalname,
+      });
+
+      // Add chunk index metadata to each chunk
+      const totalChunks = chunks.length;
+      const indexedChunks: RagDocument[] = chunks.map((chunk, index) => ({
+        ...chunk,
+        metadata: {
+          ...chunk.metadata,
+          chunkIndex: index,
+          totalChunks,
+        },
+      }));
+
+      logger.info(`Split into ${totalChunks} chunks`);
+
+      // ── Step 3 & 4: Generate embeddings and store in ChromaDB ────
+      const embeddings = new RagEmbeddings();
+      const vectorStore = new RagVectorStore(embeddings);
+
+      await vectorStore.addDocuments(indexedChunks);
+
+      logger.info(
+        `Indexed ${totalChunks} chunks for document ${documentId} in ChromaDB`,
+      );
+
+      // ── Step 5: Return indexing statistics ────────────────────────
       res.status(201).json({
         documentId,
         filename: file.originalname,
         pageCount,
         textLength,
-        status: "loaded",
+        chunkCount: totalChunks,
+        status: "indexed",
       });
     } catch (error) {
       next(error);

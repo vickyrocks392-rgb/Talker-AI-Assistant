@@ -17,7 +17,7 @@ const logger = createLogger("RagEmbeddings");
  * Default configuration for the embedding generator.
  */
 const DEFAULT_EMBEDDING_CONFIG: Required<EmbeddingConfig> = {
-  model: "llama3.2:3b",
+  model: "nomic-embed-text",
   baseUrl: "http://127.0.0.1:11434",
   dimensions: 768,
 };
