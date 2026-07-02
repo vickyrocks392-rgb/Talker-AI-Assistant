@@ -43,6 +43,7 @@ import { handleChat } from "./server/routes/chat";
 import { handleSummarize } from "./server/routes/summarize";
 import { handleTTS } from "./server/routes/tts";
 import healthRouter from "./server/routes/health";
+import conversationsRouter from "./server/routes/conversations";
 
 // Middleware
 import { apiNotFoundHandler, globalErrorHandler } from "./server/middleware/error";
@@ -63,6 +64,7 @@ app.use("/", healthRouter);
 app.post("/api/chat", handleChat);
 app.post("/api/summarize", handleSummarize);
 app.post("/api/tts", handleTTS);
+app.use("/", conversationsRouter);
 
 // Catch-all for unknown /api/* paths
 app.use("/api", apiNotFoundHandler);
@@ -125,7 +127,12 @@ async function start() {
       logger.info(`  POST   /api/chat       Chat with streaming support`);
       logger.info(`  POST   /api/summarize  Generate conversation title`);
       logger.info(`  POST   /api/tts        Text-to-speech fallback`);
-      logger.info(`  GET    /health         Server health check\n`);
+      logger.info(`  GET    /health         Server health check`);
+      logger.info(`  GET    /api/conversations          List conversations`);
+      logger.info(`  POST   /api/conversations          Create conversation`);
+      logger.info(`  GET    /api/conversations/:id      Get conversation`);
+      logger.info(`  PATCH  /api/conversations/:id      Update conversation`);
+      logger.info(`  DELETE /api/conversations/:id      Delete conversation\n`);
 
       if (config.server.isDevelopment) {
         logger.info(`Frontend: http://localhost:${config.server.port}\n`);
