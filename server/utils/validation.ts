@@ -44,7 +44,7 @@ function assertArray(value: unknown, field: string): unknown[] {
  * Validate and coerce the body of a `POST /api/chat` request.
  *
  * Accepted body:
- *   { text: string; history?: ConversationMessage[]; persona?: Persona; stream?: boolean }
+ *   { text: string; conversationId?: string; history?: ConversationMessage[]; persona?: Persona; stream?: boolean }
  */
 export function validateChatRequest(body: Record<string, unknown>): ChatRequest & { stream?: boolean } {
   const text = assertString(body.text, "text");
@@ -55,8 +55,20 @@ export function validateChatRequest(body: Record<string, unknown>): ChatRequest 
     // Accept any shape from the client; the server normalises roles below.
   }
 
+  let conversationId: string | undefined;
+  if (body.conversationId !== undefined) {
+    if (typeof body.conversationId !== "string" || body.conversationId.trim().length === 0) {
+      throw new ValidationError(
+        '"conversationId" must be a non-empty string if provided.',
+        "conversationId",
+      );
+    }
+    conversationId = body.conversationId.trim();
+  }
+
   return {
     text,
+    conversationId,
     history: history as ChatRequest["history"],
     persona: body.persona as ChatRequest["persona"],
     stream: typeof body.stream === "boolean" ? body.stream : undefined,

@@ -2,19 +2,15 @@ import React from "react";
 // @ts-nocheck
 import { motion, AnimatePresence } from "motion/react";
 import { MessageSquare, Mic, MicOff, Smartphone, ArrowRight, BrainCircuit, Navigation, Calendar } from "lucide-react";
-import { Message } from "../types";
+import type { Message } from "../types";
 import { MessageItem } from "./MessageItem";
 import { formatDateSeparator } from "../lib/date-utils";
 
 const getMessageDate = (createdAt: any): Date | null => {
   if (!createdAt) return null;
   try {
-    if (typeof createdAt.toDate === "function") {
-      return createdAt.toDate();
-    } else if (createdAt instanceof Date) {
+    if (createdAt instanceof Date) {
       return createdAt;
-    } else if (createdAt && typeof createdAt.seconds === "number") {
-      return new Date(createdAt.seconds * 1000);
     } else if (typeof createdAt === "string" || typeof createdAt === "number") {
       return new Date(createdAt);
     }
@@ -114,7 +110,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
               const separatorText = formatDateSeparator(msg.createdAt);
               if (separatorText) {
                 elements.push(
-                  <div key={`sep-${msg.messageId || index}`} className="flex items-center justify-center my-5 select-none">
+                  <div key={`sep-${msg.id || index}`} className="flex items-center justify-center my-5 select-none">
                     <div className="h-[1px] bg-gradient-to-r from-transparent via-zinc-800 to-transparent flex-1" />
                     <div className="mx-4 px-3.5 py-1.5 rounded-full bg-zinc-950 border border-zinc-900 shadow-sm flex items-center gap-1.5 text-[10px] text-zinc-400 font-mono tracking-wider uppercase font-bold">
                       <Calendar className="w-3.5 h-3.5 text-red-500" />
@@ -128,7 +124,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
 
             elements.push(
               <MessageItem
-                key={msg.messageId || index}
+                key={msg.id || index}
                 msg={msg}
                 index={index}
                 speakingMessageId={speakingMessageId}

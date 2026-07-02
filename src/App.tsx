@@ -91,24 +91,18 @@ export default function App() {
 
   // 4. Chat session list, syncing, and messages pipelines hook
   const {
-    chats,
-    activeChatId,
-    setActiveChatId,
+    conversations,
+    activeConversationId,
+    setActiveConversationId,
     messages,
-    allMessages,
-    searchQuery,
-    setSearchQuery,
     loading,
     inputText,
     setInputText,
     createNewSession,
     deleteSession,
     sendMessageToBot,
-    migrateLocalDataToCloud,
     devScrollRef,
   } = useChatManager({
-    currentUser,
-    authLoading,
     persona,
     onBotReply: (replyText, msgId) => {
       if (autoReadReplies && voiceSpeechEnabled) {
@@ -118,13 +112,6 @@ export default function App() {
       }
     },
   });
-
-  // 5. Sync offline chats to Firestore upon login
-  useEffect(() => {
-    if (currentUser) {
-      migrateLocalDataToCloud(currentUser.uid);
-    }
-  }, [currentUser, migrateLocalDataToCloud]);
 
   // Layout presentation controls
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
@@ -215,17 +202,15 @@ export default function App() {
 
                 {/* Session lists and filters */}
                 <ChatSessionsStrip
-                  chats={chats}
-                  activeChatId={activeChatId}
+                  conversations={conversations}
+                  activeConversationId={activeConversationId}
                   onSelectChat={(id) => {
-                    setActiveChatId(id);
+                    setActiveConversationId(id);
                     if (window.innerWidth < 1024) {
                       setSidebarOpen(false);
                     }
                   }}
-                  allMessages={allMessages}
-                  searchQuery={searchQuery}
-                  onSearchChange={setSearchQuery}
+                  messages={messages}
                   onCreateSession={createNewSession}
                   onDeleteSession={deleteSession}
                 />
@@ -344,7 +329,7 @@ export default function App() {
                 Talker AI Assistant
               </h2>
               <span className="text-[10px] text-zinc-500 font-mono tracking-wide">
-                {activeChatId ? "PERSISTENT SESSION ACTIVE" : "NO CONVERSATION SELECTED"}
+                {activeConversationId ? "PERSISTENT SESSION ACTIVE" : "NO CONVERSATION SELECTED"}
               </span>
             </div>
           </div>

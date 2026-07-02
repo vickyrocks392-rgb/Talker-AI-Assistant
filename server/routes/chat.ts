@@ -1,17 +1,19 @@
 /**
  * Chat endpoint — POST /api/chat
  *
+ * Thin HTTP controller. Business logic is delegated to ConversationService.
  * Supports both non-streaming and streaming (Server-Sent Events) responses.
  */
 
 import type express from "express";
-import { createChatSystemPrompt } from "../ai/prompts";
-import { parseChatResponse, StreamReplyExtractor } from "../ai/parser";
-import { getAIProvider } from "../ai/provider";
 import { validateChatRequest } from "../utils/validation";
-import { OllamaMessage, ChatResponse } from "../ai/types";
 import { createLogger } from "../utils/logger";
 import { getUserFriendlyErrorMessage } from "../utils/errors";
+import {
+  handleNonStreaming,
+  handleStreaming,
+} from "../ai/conversation/conversationService";
+import type { ChatResponse } from "../ai/types";
 
 const logger = createLogger("ChatRoute");
 
@@ -20,33 +22,14 @@ export async function handleChat(
   res: express.Response,
 ): Promise<void> {
   try {
-    const { text, history, persona, stream } = validateChatRequest(req.body as Record<string, unknown>);
+    const { text, conversationId, history, persona, stream } = validateChatRequest(req.body as Record<string, unknown>);
 
     logger.debug("Chat request received", {
       textLength: text.length,
       historyLength: history?.length ?? 0,
       streaming: stream ?? false,
+      hasConversationId: !!conversationId,
     });
-
-    // Build messages array
-    const messages: OllamaMessage[] = [
-      { role: "system", content: createChatSystemPrompt(persona) },
-    ];
-
-    // Attach conversation history (last 12 messages to stay within context window)
-    if (history && Array.isArray(history)) {
-      for (const msg of history.slice(-12)) {
-        messages.push({
-          role: msg.role === "user" ? "user" : "assistant",
-          content: msg.text,
-        });
-      }
-    }
-
-    // Current user message
-    messages.push({ role: "user", content: text });
-
-    const provider = getAIProvider();
 
     // ── Streaming path (SSE) ──────────────────────────────────────
     if (stream === true) {
@@ -54,50 +37,38 @@ export async function handleChat(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      try {
-        let fullContent = "";
-        const extractor = new StreamReplyExtractor();
+      await handleStreaming(
+        { text, conversationId, history, persona, stream },
+        // onToken
+        (token: string) => {
+          res.write(`data: ${JSON.stringify({ token })}\n\n`);
+        },
+        // onDone
+        (result: ChatResponse) => {
+          res.write(`data: ${JSON.stringify({ done: true, ...result })}\n\n`);
+          res.end();
+        },
+        // onError
+        (error: string) => {
+          res.write(`data: ${JSON.stringify({ error })}\n\n`);
+          res.end();
+        },
+      );
 
-        for await (const chunk of provider.chatStream({ messages })) {
-          fullContent += chunk.message.content;
-          
-          const delta = extractor.append(chunk.message.content);
-          if (delta) {
-            res.write(`data: ${JSON.stringify({ token: delta })}\n\n`);
-          }
-
-          if (chunk.done) {
-            try {
-              const parsed = parseChatResponse(fullContent);
-              res.write(`data: ${JSON.stringify({ done: true, ...parsed })}\n\n`);
-            } catch {
-              logger.warn("Failed to parse streamed response");
-              res.write(`data: ${JSON.stringify({ done: true, error: "Parse failed" })}\n\n`);
-            }
-          }
-        }
-        res.end();
-      } catch (streamError) {
-        logger.error("Streaming error", streamError);
-        res.write(`data: ${JSON.stringify({ error: getUserFriendlyErrorMessage(streamError) })}\n\n`);
-        res.end();
-      }
       return;
     }
 
     // ── Non-streaming path ────────────────────────────────────────
-    const response = await provider.chat({ messages });
-    const parsed = parseChatResponse(response.message.content);
-
-    const chatResponse: ChatResponse = {
-      replyText: parsed.replyText,
-      mapAction: parsed.mapAction,
-      searchSources: [],
-    };
+    const chatResponse = await handleNonStreaming({
+      text,
+      conversationId,
+      history,
+      persona,
+    });
 
     logger.debug("Chat response generated", {
-      replyLength: parsed.replyText.length,
-      mapType: parsed.mapAction.type,
+      replyLength: chatResponse.replyText.length,
+      mapType: chatResponse.mapAction.type,
     });
 
     res.json(chatResponse);

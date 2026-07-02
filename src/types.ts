@@ -40,27 +40,27 @@ export interface SecurityConfig {
   firstName: string;
 }
 
-export interface ChatSession {
-  chatId: string;
-  userId: string;
+/**
+ * A conversation as returned by the backend API.
+ * Maps from the server's Conversation type.
+ */
+export interface Conversation {
+  id: string;
   title: string;
-  mode: "chat";
-  summarized?: boolean;
-  createdAt: any;
-  updatedAt: any;
+  createdAt: string;
+  updatedAt: string;
 }
 
+/**
+ * A message as returned by the backend API.
+ * Maps from the server's Message type.
+ */
 export interface Message {
-  messageId: string;
-  userId: string;
+  id: string;
+  conversationId: string;
   role: ConversationRole;
-  text: string;
-  mapAction?: MapAction;
-  searchSources?: Array<{
-    title: string;
-    url: string;
-  }>;
-  createdAt: any;
+  content: string;
+  createdAt: string;
 }
 
 // Global window extensions for Web Speech API standard interfaces
@@ -89,4 +89,3 @@ declare global {
     webkitSpeechRecognition?: any;
   }
 }
-

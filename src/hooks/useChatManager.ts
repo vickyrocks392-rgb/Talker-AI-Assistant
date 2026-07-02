@@ -1,57 +1,34 @@
+/**
+ * useChatManager — frontend conversation state manager.
+ *
+ * The backend (SQLite via MemoryService) is the single source of truth.
+ * This hook never stores messages locally; it always fetches from the API.
+ */
+
 import { useState, useEffect, useRef, useCallback } from "react";
-import { User } from "firebase/auth";
+import type { UserPersona } from "../types";
+import type { Conversation, Message } from "../types";
 import {
-  collection,
-  query,
-  orderBy,
-  onSnapshot,
-  setDoc,
-  doc,
-  serverTimestamp,
-  deleteDoc,
-  writeBatch,
-} from "firebase/firestore";
-import { db } from "../lib/firebase";
-import { ChatSession, Message, UserPersona } from "../types";
-import { handleFirestoreError, OperationType } from "../lib/firestore-error-handler";
+  fetchConversations,
+  createConversation,
+  getConversation,
+  deleteConversation,
+  sendChatMessage,
+  sendChatMessageStream,
+} from "../lib/api";
 
 interface UseChatManagerProps {
-  currentUser: User | null;
-  authLoading: boolean;
   persona: UserPersona;
   onBotReply?: (replyText: string, messageId: string) => void;
 }
 
 export const useChatManager = ({
-  currentUser,
-  authLoading,
   persona,
   onBotReply,
 }: UseChatManagerProps) => {
-  // Sync offline-only cache from Local Storage on boot
-  const [localChats, setLocalChats] = useState<ChatSession[]>(() => {
-    try {
-      const saved = localStorage.getItem("talker_local_chats");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [localMessages, setLocalMessages] = useState<Record<string, Message[]>>(() => {
-    try {
-      const saved = localStorage.getItem("talker_local_msgs");
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  const [chats, setChats] = useState<ChatSession[]>([]);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [allMessages, setAllMessages] = useState<Record<string, Message[]>>({});
-  const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [inputText, setInputText] = useState<string>("");
 
@@ -61,509 +38,259 @@ export const useChatManager = ({
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
       devScrollRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, 1200);
+    }, 200);
   }, []);
 
-  // Helper: Sync Local Storage
-  const saveToLocalStorage = useCallback((newChats: ChatSession[], newMsgs: Record<string, Message[]>) => {
-    localStorage.setItem("talker_local_chats", JSON.stringify(newChats));
-    localStorage.setItem("talker_local_msgs", JSON.stringify(newMsgs));
-    setLocalChats(newChats);
-    setLocalMessages(newMsgs);
-  }, []);
+  // ── Load conversation list on mount ──────────────────────────────
 
-  // 1. Sync Chat Sessions List
   useEffect(() => {
-    if (authLoading) return;
+    let cancelled = false;
 
-    if (currentUser) {
-      const chatsPath = "chats";
-      const q = query(
-        collection(db, chatsPath),
-        orderBy("updatedAt", "desc")
-      );
+    async function init() {
+      try {
+        const list = await fetchConversations();
 
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const docs: ChatSession[] = [];
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            // Map Firestore document data safely
-            docs.push({
-              chatId: data.chatId,
-              userId: data.userId,
-              title: data.title,
-              mode: data.mode || "chat",
-              summarized: data.summarized,
-              createdAt: data.createdAt,
-              updatedAt: data.updatedAt,
-            } as ChatSession);
-          });
-          setChats(docs);
+        if (cancelled) return;
 
-          // Auto select first chat if activeChatId is null
-          if (docs.length > 0 && !activeChatId) {
-            setActiveChatId(docs[0].chatId);
-          }
-        },
-        (err) => {
-          handleFirestoreError(err, OperationType.LIST, chatsPath);
+        if (list.length > 0) {
+          // Sort by updatedAt descending (most recent first)
+          const sorted = [...list].sort(
+            (a, b) =>
+              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+          );
+          setConversations(sorted);
+          setActiveConversationId(sorted[0].id);
+        } else {
+          // No conversations exist — create one automatically
+          const created = await createConversation();
+          if (cancelled) return;
+          setConversations([created]);
+          setActiveConversationId(created.id);
         }
-      );
-
-      return () => unsubscribe();
-    } else {
-      setChats(localChats);
-      if (localChats.length > 0 && !activeChatId) {
-        setActiveChatId(localChats[0].chatId);
+      } catch (err) {
+        console.error("Failed to initialise conversations:", err);
       }
     }
-  }, [currentUser, authLoading, localChats, activeChatId]);
 
-  // 2. Sync Active Session Messages
+    init();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ── Fetch messages when active conversation changes ──────────────
+
   useEffect(() => {
-    if (!activeChatId) {
+    if (!activeConversationId) {
       setMessages([]);
       return;
     }
 
-    if (currentUser) {
-      const messagesPath = `chats/${activeChatId}/messages`;
-      const q = query(collection(db, messagesPath), orderBy("createdAt", "asc"));
+    let cancelled = false;
 
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const msgs: Message[] = [];
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            msgs.push({
-              messageId: data.messageId,
-              userId: data.userId,
-              role: data.role,
-              text: data.text,
-              mapAction: data.mapAction,
-              searchSources: data.searchSources,
-              createdAt: data.createdAt,
-            } as Message);
-          });
-          setMessages(msgs);
-          scrollToBottom();
-        },
-        (err) => {
-          handleFirestoreError(err, OperationType.LIST, messagesPath);
-        }
-      );
+    async function loadMessages() {
+      try {
+        const detail = await getConversation(activeConversationId);
+        if (cancelled) return;
 
-      return () => unsubscribe();
-    } else {
-      const msgs = localMessages[activeChatId] || [];
-      setMessages(msgs);
-      scrollToBottom();
-    }
-  }, [activeChatId, currentUser, localMessages, scrollToBottom]);
+        // Map backend Message to frontend Message type
+        const mapped: Message[] = detail.messages.map((m) => ({
+          id: m.id,
+          conversationId: m.conversationId,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+        }));
 
-  // 3. Synchronize All Messages for Search Indexing
-  useEffect(() => {
-    if (authLoading) return;
-
-    if (!currentUser) {
-      setAllMessages(localMessages);
-      return;
+        setMessages(mapped);
+        scrollToBottom();
+      } catch (err) {
+        console.error("Failed to load conversation messages:", err);
+      }
     }
 
-    const activeChatIds = chats.map((c) => c.chatId);
-
-    // Filter out old keys
-    setAllMessages((prev) => {
-      const next = { ...prev };
-      Object.keys(next).forEach((id) => {
-        if (!activeChatIds.includes(id)) {
-          delete next[id];
-        }
-      });
-      return next;
-    });
-
-    const unsubscribes = chats.map((chat) => {
-      const messagesPath = `chats/${chat.chatId}/messages`;
-      const q = query(collection(db, messagesPath), orderBy("createdAt", "asc"));
-
-      return onSnapshot(
-        q,
-        (snapshot) => {
-          const msgs: Message[] = [];
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            msgs.push({
-              messageId: data.messageId,
-              userId: data.userId,
-              role: data.role,
-              text: data.text,
-              mapAction: data.mapAction,
-              searchSources: data.searchSources,
-              createdAt: data.createdAt,
-            } as Message);
-          });
-          setAllMessages((prev) => ({
-            ...prev,
-            [chat.chatId]: msgs,
-          }));
-        },
-        (err) => {
-          console.warn("Could not load messages for search indexing:", chat.chatId, err);
-        }
-      );
-    });
+    loadMessages();
 
     return () => {
-      unsubscribes.forEach((unsub) => unsub());
+      cancelled = true;
     };
-  }, [chats, currentUser, authLoading, localMessages]);
+  }, [activeConversationId, scrollToBottom]);
 
-  // Sync Local Storage to Firestore upon Successful Login to Avoid Guest Data Loss
-  const migrateLocalDataToCloud = useCallback(async (uid: string) => {
-    if (localChats.length === 0) return;
+  // ── Refresh the active conversation from the backend ─────────────
 
-    try {
-      const batch = writeBatch(db);
-
-      for (const chat of localChats) {
-        const chatRef = doc(db, "chats", chat.chatId);
-        batch.set(chatRef, {
-          ...chat,
-          userId: uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-
-        const chatMsgs = localMessages[chat.chatId] || [];
-        for (const msg of chatMsgs) {
-          const msgRef = doc(db, `chats/${chat.chatId}/messages`, msg.messageId);
-          batch.set(msgRef, {
-            ...msg,
-            userId: uid,
-            createdAt: serverTimestamp(),
-          });
-        }
-      }
-
-      await batch.commit();
-
-      // Clear local state cleanly
-      localStorage.removeItem("talker_local_chats");
-      localStorage.removeItem("talker_local_msgs");
-      setLocalChats([]);
-      setLocalMessages({});
-    } catch (e) {
-      console.error("Failed to migrate guest data to Cloud:", e);
-    }
-  }, [localChats, localMessages]);
-
-  // Create standard Session Title Summarizer
-  const summarizeSessionText = async (targetId: string, allMsgs: Message[]) => {
-    if (allMsgs.length < 2) return;
+  const refreshActiveConversation = useCallback(async () => {
+    if (!activeConversationId) return;
 
     try {
-      const payload = allMsgs.map((m) => ({
+      const [list, detail] = await Promise.all([
+        fetchConversations(),
+        getConversation(activeConversationId),
+      ]);
+
+      const sorted = [...list].sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+      setConversations(sorted);
+
+      const mapped: Message[] = detail.messages.map((m) => ({
+        id: m.id,
+        conversationId: m.conversationId,
         role: m.role,
-        text: m.text,
+        content: m.content,
+        createdAt: m.createdAt,
       }));
 
-      const customKey = localStorage.getItem("custom_ollama_api_key") || "";
-      const response = await fetch("/api/summarize", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          ...(customKey ? { "x-ollama-key": customKey } : {})
-        },
-        body: JSON.stringify({ messages: payload }),
-      });
+      setMessages(mapped);
+    } catch (err) {
+      console.error("Failed to refresh conversation:", err);
+    }
+  }, [activeConversationId]);
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.summary) {
-          if (currentUser) {
-            try {
-              await setDoc(
-                doc(db, "chats", targetId),
-                {
-                  title: data.summary,
-                  summarized: true,
-                  updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-              );
-            } catch (err) {
-              handleFirestoreError(err, OperationType.WRITE, `chats/${targetId}`);
-            }
+  // ── Create a new conversation ────────────────────────────────────
+
+  const createNewSession = useCallback(async () => {
+    try {
+      const created = await createConversation();
+      setConversations((prev) => [created, ...prev]);
+      setActiveConversationId(created.id);
+      setMessages([]);
+    } catch (err) {
+      console.error("Failed to create new conversation:", err);
+    }
+  }, []);
+
+  // ── Delete a conversation ────────────────────────────────────────
+
+  const deleteSession = useCallback(
+    async (conversationId: string) => {
+      try {
+        await deleteConversation(conversationId);
+        setConversations((prev) =>
+          prev.filter((c) => c.id !== conversationId),
+        );
+
+        if (activeConversationId === conversationId) {
+          // Select the next available conversation or create one
+          const remaining = conversations.filter(
+            (c) => c.id !== conversationId,
+          );
+          if (remaining.length > 0) {
+            setActiveConversationId(remaining[0].id);
           } else {
-            const updatedChats = localChats.map((c) =>
-              c.chatId === targetId
-                ? { ...c, title: data.summary, summarized: true, updatedAt: new Date() }
-                : c
-            );
-            saveToLocalStorage(updatedChats, { ...localMessages, [targetId]: allMsgs });
+            const created = await createConversation();
+            setConversations([created]);
+            setActiveConversationId(created.id);
           }
         }
-      }
-    } catch (err) {
-      console.warn("Generating session summary failed:", err);
-    }
-  };
-
-  // Create Session
-  const createNewSession = async () => {
-    const uid = currentUser?.uid || "guest_user";
-    const newChatId = "chat_" + Math.random().toString(36).substring(2, 11);
-
-    const newChat: ChatSession = {
-      chatId: newChatId,
-      userId: uid,
-      title: `Saved Conversation ${chats.length + 1}`,
-      mode: "chat",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    if (currentUser) {
-      const chatPath = `chats/${newChatId}`;
-      try {
-        await setDoc(doc(db, "chats", newChatId), {
-          ...newChat,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        setActiveChatId(newChatId);
       } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, chatPath);
+        console.error("Failed to delete conversation:", err);
       }
-    } else {
-      const updatedChats = [newChat, ...localChats];
-      const updatedMsgs = { ...localMessages, [newChatId]: [] };
-      saveToLocalStorage(updatedChats, updatedMsgs);
-      setActiveChatId(newChatId);
-    }
-  };
+    },
+    [activeConversationId, conversations],
+  );
 
-  // Delete specific session
-  const deleteSession = async (chatId: string) => {
-    if (currentUser) {
-      try {
-        await deleteDoc(doc(db, "chats", chatId));
-        if (activeChatId === chatId) {
-          setActiveChatId(null);
-        }
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `chats/${chatId}`);
-      }
-    } else {
-      const updatedChats = localChats.filter((c) => c.chatId !== chatId);
-      const updatedMsgs = { ...localMessages };
-      delete updatedMsgs[chatId];
-      saveToLocalStorage(updatedChats, updatedMsgs);
-      if (activeChatId === chatId) {
-        setActiveChatId(null);
-      }
-    }
-  };
+  // ── Send a message ───────────────────────────────────────────────
 
-  // Send Message Core Pipeline
-  const sendMessageToBot = async (textToSend: string) => {
-    const trimmed = textToSend.trim();
-    if (!trimmed) return null;
+  const sendMessageToBot = useCallback(
+    async (textToSend: string) => {
+      const trimmed = textToSend.trim();
+      if (!trimmed) return;
 
-    let targetChatId = activeChatId;
+      // Determine which conversation to use
+      let targetId = activeConversationId;
 
-    // Create session on-the-fly if missing
-    if (!targetChatId) {
-      const newSessionId = "chat_" + Math.random().toString(36).substring(2, 11);
-      const uid = currentUser?.uid || "guest_user";
-      const newChat: ChatSession = {
-        chatId: newSessionId,
-        userId: uid,
-        title: trimmed.length > 20 ? trimmed.substring(0, 20) + "..." : trimmed,
-        mode: "chat",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      if (currentUser) {
-        await setDoc(doc(db, "chats", newSessionId), {
-          ...newChat,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        const updatedChats = [newChat, ...localChats];
-        const updatedMsgs = { ...localMessages, [newSessionId]: [] };
-        saveToLocalStorage(updatedChats, updatedMsgs);
-      }
-      targetChatId = newSessionId;
-      setActiveChatId(newSessionId);
-    }
-
-    const userMessageId = "msg_user_" + Math.random().toString(36).substring(2, 11);
-    const userMessage: Message = {
-      messageId: userMessageId,
-      userId: currentUser?.uid || "guest_user",
-      role: "user",
-      text: trimmed,
-      createdAt: new Date(),
-    };
-
-    // Store user message immediately
-    if (currentUser) {
-      try {
-        await setDoc(doc(db, `chats/${targetChatId}/messages`, userMessageId), {
-          ...userMessage,
-          createdAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `chats/${targetChatId}/messages/${userMessageId}`);
-      }
-    } else {
-      const chatMsgs = localMessages[targetChatId] || [];
-      const updatedMsgs = {
-        ...localMessages,
-        [targetChatId]: [...chatMsgs, userMessage],
-      };
-      saveToLocalStorage(localChats, updatedMsgs);
-    }
-
-    setInputText("");
-    setLoading(true);
-
-    // Prepare transcript history context (last 12 items for context limit buffer)
-    const currentMsgs = messages.length > 0 ? messages : (localMessages[targetChatId] || []);
-    const historyPayload = currentMsgs.slice(-12).map((m) => ({
-      role: m.role,
-      text: m.text,
-    }));
-
-    try {
-      const customKey = localStorage.getItem("custom_ollama_api_key") || "";
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          ...(customKey ? { "x-ollama-key": customKey } : {})
-        },
-        body: JSON.stringify({
-          text: trimmed,
-          history: historyPayload,
-          persona: persona,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Companion brain temporary interruption. Retrying...");
-      }
-
-      const replyData = await response.json();
-      const assistantMsgId = "msg_ai_" + Math.random().toString(36).substring(2, 11);
-
-      // Create assistant message object
-      const assistantMessage: Message = {
-        messageId: assistantMsgId,
-        userId: currentUser?.uid || "guest_user",
-        role: "assistant",
-        text: replyData.replyText,
-        mapAction: replyData.mapAction,
-        searchSources: replyData.searchSources,
-        createdAt: new Date(),
-      };
-
-      let finalMessagesForSummary: Message[] = [];
-
-      if (currentUser) {
+      // If no active conversation, create one on the fly
+      if (!targetId) {
         try {
-          await setDoc(doc(db, `chats/${targetChatId}/messages`, assistantMsgId), {
-            ...assistantMessage,
-            createdAt: serverTimestamp(),
-          });
-          finalMessagesForSummary = [...messages, assistantMessage];
+          const created = await createConversation();
+          setConversations((prev) => [created, ...prev]);
+          setActiveConversationId(created.id);
+          targetId = created.id;
         } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `chats/${targetChatId}/messages/${assistantMsgId}`);
+          console.error("Failed to create conversation for message:", err);
+          return;
         }
-      } else {
-        const chatMsgs = localMessages[targetChatId] || [];
-        const withAI = [...chatMsgs, userMessage, assistantMessage];
-        const updatedMsgs = {
-          ...localMessages,
-          [targetChatId]: withAI,
-        };
-
-        saveToLocalStorage(localChats, updatedMsgs);
-        finalMessagesForSummary = withAI;
       }
 
-      setLoading(false);
+      setInputText("");
+      setLoading(true);
 
-      // Trigger standard verbal reply synthesis callback if provided
-      if (onBotReply) {
-        onBotReply(replyData.replyText, assistantMsgId);
-      }
-
-      // Automatically compile conversation summary if required
-      const currentChat = (currentUser ? chats : localChats).find((c) => c.chatId === targetChatId);
-      if (currentChat && !currentChat.summarized && finalMessagesForSummary.length >= 2) {
-        summarizeSessionText(targetChatId, finalMessagesForSummary);
-      }
-
-      return assistantMessage;
-    } catch (err: any) {
-      console.error("Chat AI API failed:", err);
-      const assistantMsgId = "msg_ai_" + Math.random().toString(36).substring(2, 11);
-      const fallbackMsg: Message = {
-        messageId: assistantMsgId,
-        userId: currentUser?.uid || "guest_user",
-        role: "assistant",
-        text: `I am currently experiencing higher demand or connection spikes. Let me record and backup your query locally: "${trimmed}"`,
-        mapAction: { type: "none" },
-        createdAt: new Date(),
+      // Optimistically add the user message to the UI
+      const tempUserMsg: Message = {
+        id: "temp_" + Math.random().toString(36).substring(2, 11),
+        conversationId: targetId,
+        role: "user",
+        content: trimmed,
+        createdAt: new Date().toISOString(),
       };
+      setMessages((prev) => [...prev, tempUserMsg]);
+      scrollToBottom();
 
-      if (currentUser) {
-        try {
-          await setDoc(doc(db, `chats/${targetChatId}/messages`, assistantMsgId), {
-            ...fallbackMsg,
-            createdAt: serverTimestamp(),
-          });
-        } catch {}
-      } else {
-        const chatMsgs = localMessages[targetChatId] || [];
-        const withAI = [...chatMsgs, userMessage, fallbackMsg];
-        saveToLocalStorage(localChats, { ...localMessages, [targetChatId]: withAI });
+      try {
+        // Send via streaming
+        const result = await sendChatMessageStream(
+          {
+            text: trimmed,
+            conversationId: targetId,
+            persona,
+            stream: true,
+          },
+          // onToken — we don't update UI per-token since we reload from backend
+          () => {},
+        );
+
+        // After response, refresh from backend (source of truth)
+        await refreshActiveConversation();
+
+        setLoading(false);
+
+        // Trigger voice callback if provided
+        if (onBotReply) {
+          const assistantMsgId = "msg_" + Math.random().toString(36).substring(2, 11);
+          onBotReply(result.replyText, assistantMsgId);
+        }
+      } catch (err: any) {
+        console.error("Chat API failed:", err);
+
+        // Add a fallback error message
+        const fallbackMsg: Message = {
+          id: "err_" + Math.random().toString(36).substring(2, 11),
+          conversationId: targetId,
+          role: "assistant",
+          content: `I am currently experiencing higher demand or connection spikes. Let me record and backup your query locally: "${trimmed}"`,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, fallbackMsg]);
+
+        setLoading(false);
+
+        if (onBotReply) {
+          onBotReply(fallbackMsg.content, fallbackMsg.id);
+        }
       }
-
-      setLoading(false);
-
-      if (onBotReply) {
-        onBotReply(fallbackMsg.text, assistantMsgId);
-      }
-
-      return fallbackMsg;
-    }
-  };
+    },
+    [
+      activeConversationId,
+      persona,
+      onBotReply,
+      refreshActiveConversation,
+      scrollToBottom,
+    ],
+  );
 
   return {
-    chats,
-    activeChatId,
-    setActiveChatId,
+    conversations,
+    activeConversationId,
+    setActiveConversationId,
     messages,
-    allMessages,
-    searchQuery,
-    setSearchQuery,
     loading,
-    setLoading,
     inputText,
     setInputText,
     createNewSession,
     deleteSession,
     sendMessageToBot,
-    migrateLocalDataToCloud,
     devScrollRef,
     scrollToBottom,
   };

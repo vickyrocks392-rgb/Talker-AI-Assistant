@@ -61,6 +61,7 @@ export interface ConversationMessage {
 /** Request body for `POST /api/chat`. */
 export interface ChatRequest {
   text: string;
+  conversationId?: string;
   history?: ConversationMessage[];
   persona?: Persona;
 }
