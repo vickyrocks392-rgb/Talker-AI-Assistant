@@ -21,6 +21,7 @@ import { getUserFriendlyErrorMessage } from "../../utils/errors";
 import { memoryService } from "../../memory/service";
 import { plan } from "../tools/planner";
 import { executeTool } from "../tools/executor";
+import { ragService } from "../rag/service";
 import type { OllamaMessage, ChatResponse } from "../types";
 import type { Persona, ConversationMessage } from "../types";
 import type { ToolResult, CalculatorResult, DateTimeResult } from "../tools/types";
@@ -183,6 +184,47 @@ function buildToolContext(
 }
 
 /**
+ * Retrieve relevant context from the RAG pipeline and inject it as a system
+ * message before the user message. This happens BEFORE tool injection so
+ * that the LLM has access to retrieved knowledge when planning tool usage.
+ *
+ * If no relevant chunks are found or RAG is unavailable, the messages
+ * array is returned unchanged.
+ *
+ * @returns The (possibly augmented) messages array.
+ */
+async function injectRagContext(
+  text: string,
+  messages: OllamaMessage[],
+): Promise<OllamaMessage[]> {
+  try {
+    const ragContext = await ragService.retrieveContext(text);
+
+    if (!ragContext) {
+      logger.debug("No RAG context retrieved");
+      return messages;
+    }
+
+    logger.info(
+      `Injecting RAG context: ${ragContext.chunkCount} chunks (avg score: ${ragContext.avgScore.toFixed(3)})`
+    );
+
+    // Inject the RAG context as a system message right before the user message.
+    // The LLM will use this context to answer the user's question.
+    // Insert it before the last message (which is the current user message).
+    messages.splice(messages.length - 1, 0, {
+      role: "system",
+      content: ragContext.context,
+    });
+
+    return messages;
+  } catch (error) {
+    logger.error("RAG context injection failed", error);
+    return messages;
+  }
+}
+
+/**
  * Run the deterministic planner. If a tool matches, execute it and
  * inject a strongly-worded tool context message so the LLM treats
  * the tool output as authoritative.
@@ -235,6 +277,9 @@ export async function handleNonStreaming(
 
   let messages = buildMessages(text, conversationId, history, persona);
 
+  // Phase 4.5: Inject RAG context if available (before tool injection)
+  messages = await injectRagContext(text, messages);
+
   // Phase 3B: Run the tool planner and inject tool results if applicable
   messages = await injectToolResult(text, messages);
 
@@ -279,6 +324,11 @@ export async function handleStreaming(
   const { text, conversationId, history, persona } = request;
 
   let messages = buildMessages(text, conversationId, history, persona);
+
+  // Phase 4.5: Inject RAG context if available (before tool injection)
+  // This happens BEFORE streaming starts, so streaming continues to work
+  // without any frontend changes.
+  messages = await injectRagContext(text, messages);
 
   // Phase 3B: Run the tool planner and inject tool results if applicable
   // This happens BEFORE streaming starts, so streaming continues to work

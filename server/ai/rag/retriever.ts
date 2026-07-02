@@ -27,7 +27,7 @@ const logger = createLogger("RagRetriever");
  */
 const DEFAULT_RETRIEVER_CONFIG: Required<RetrieverConfig> = {
   k: 4,
-  scoreThreshold: 0.7,
+  scoreThreshold: 0.3,
 };
 
 /**
@@ -75,19 +75,24 @@ export class RagRetriever implements Retriever {
    */
   async retrieve(query: string): Promise<SearchResult[]> {
     logger.debug(`Retrieving for query: "${query.slice(0, 80)}..."`);
+    logger.info(`[TRACE 4] Retriever.retrieve() called with query="${query.slice(0, 80)}...", k=${this.config.k}, scoreThreshold=${this.config.scoreThreshold}`);
 
     // Step 1: Embed the query
     const queryVector = await this.embeddings.embedQuery(query);
 
     logger.debug(`Query embedded: ${queryVector.length} dimensions`);
+    logger.info(`[TRACE 4.1] Query embedded successfully: ${queryVector.length} dimensions`);
 
     // Step 2: Search the vector store
+    logger.info(`[TRACE 5] Calling vectorStore.similaritySearch() with k=${this.config.k}`);
     const results = await this.vectorStore.similaritySearch(query, this.config.k);
+    logger.info(`[TRACE 5.1] similaritySearch returned ${results.length} results`);
 
     // Step 3: Filter by score threshold
     const filtered = results.filter(
       (result) => result.score >= this.config.scoreThreshold,
     );
+    logger.info(`[TRACE 5.2] After filtering by scoreThreshold=${this.config.scoreThreshold}: ${filtered.length} results`);
 
     // Step 4: Sort by score descending (most relevant first)
     const sorted = filtered.sort((a, b) => b.score - a.score);
@@ -98,6 +103,7 @@ export class RagRetriever implements Retriever {
     logger.debug(
       `Retrieved ${results.length} results, ${topK.length} passed threshold ${this.config.scoreThreshold}`,
     );
+    logger.info(`[TRACE 5.3] Final result count after sorting and limiting to k=${this.config.k}: ${topK.length}`);
 
     return topK;
   }

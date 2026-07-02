@@ -16,14 +16,15 @@ import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 
 const logger = createLogger("RagVectorStore");
 
-/**
- * Default configuration for the Chroma vector store.
- */
-const DEFAULT_VECTORSTORE_CONFIG: Required<VectorStoreConfig> = {
-  collectionName: "talker_rag",
-  persistDirectory: "./storage/rag",
-  dimensions: 768,
-};
+  /**
+   * Default configuration for the Chroma vector store.
+   */
+  const DEFAULT_VECTORSTORE_CONFIG: Required<VectorStoreConfig> = {
+    collectionName: "talker_rag",
+    host: "localhost",
+    port: 8000,
+    dimensions: 768,
+  };
 
 /**
  * Vector store implementation using ChromaDB via LangChain.
@@ -56,16 +57,10 @@ export class RagVectorStore implements VectorStore {
     if (!this.store) {
       logger.debug(`Creating Chroma collection: ${this.config.collectionName}`);
 
-      // Use embedded persistent Chroma by providing a ChromaClient instance.
-      // When an `index` is provided, LangChain's Chroma wrapper uses it directly
-      // instead of creating an HTTP client.
-      const { ChromaClient } = await Chroma.imports();
-      const client = new ChromaClient({
-        path: this.config.persistDirectory,
-      });
-
+      // Use client-server ChromaDB connection.
+      // ChromaDB 3.x requires a running server - we connect via HTTP.
       this.store = new Chroma(this.embeddings, {
-        index: client,
+        url: `http://${this.config.host}:${this.config.port}`,
         collectionName: this.config.collectionName,
         numDimensions: this.config.dimensions,
       });
@@ -86,11 +81,39 @@ export class RagVectorStore implements VectorStore {
    */
   async addDocuments(documents: RagDocument[]): Promise<void> {
     logger.debug(`Adding ${documents.length} documents to vector store`);
+    logger.info(`[INSTRUMENT] addDocuments called with collection="${this.config.collectionName}" host="${this.config.host}" port="${this.config.port}" dimensions="${this.config.dimensions}"`);
 
     const store = await this.getStore();
+    
+    // Log the actual store configuration
+    logger.info(`[INSTRUMENT] Chroma store instance URL: http://${this.config.host}:${this.config.port}`);
+    logger.info(`[INSTRUMENT] Chroma collection name: ${this.config.collectionName}`);
+    
+    // Get document count before adding
+    let countBefore = 0;
+    try {
+      const collection = await (store as any).getStoreInstance();
+      countBefore = await collection.count();
+      logger.info(`[INSTRUMENT] Document count BEFORE adding: ${countBefore}`);
+    } catch (e) {
+      logger.debug(`[INSTRUMENT] Could not get count before: ${e}`);
+    }
+    
     await store.addDocuments(documents);
 
     logger.debug(`Successfully added ${documents.length} documents`);
+    
+    // Get document count after adding
+    try {
+      const collection = await (store as any).getStoreInstance();
+      const countAfter = await collection.count();
+      logger.info(`[INSTRUMENT] Document count AFTER adding: ${countAfter}`);
+      logger.info(`[INSTRUMENT] Documents added in this batch: ${countAfter - countBefore}`);
+    } catch (e) {
+      logger.debug(`[INSTRUMENT] Could not get count after: ${e}`);
+    }
+    
+    logger.info(`[INSTRUMENT] addDocuments completed for ${documents.length} documents`);
   }
 
   /**
@@ -102,13 +125,20 @@ export class RagVectorStore implements VectorStore {
    */
   async similaritySearch(query: string, k: number = 4): Promise<SearchResult[]> {
     logger.debug(`Searching for: "${query.slice(0, 80)}..." (k=${k})`);
+    logger.info(`[TRACE 5.4] similaritySearch() called with query="${query.slice(0, 80)}...", k=${k}`);
+    logger.info(`[INSTRUMENT] similaritySearch called with collection="${this.config.collectionName}" host="${this.config.host}" port="${this.config.port}" dimensions="${this.config.dimensions}"`);
 
     const store = await this.getStore();
+
+    // Log the actual store configuration
+    logger.info(`[INSTRUMENT] Chroma store instance URL: http://${this.config.host}:${this.config.port}`);
+    logger.info(`[INSTRUMENT] Chroma collection name: ${this.config.collectionName}`);
 
     // Chroma's similaritySearchWithScore returns [Document, number][] where
     // the score is a distance (lower = more similar). We normalise it to a
     // similarity score (higher = more similar) using: similarity = 1 / (1 + distance)
     const results = await store.similaritySearchWithScore(query, k);
+    logger.info(`[TRACE 5.5] Chroma similaritySearchWithScore returned ${results.length} raw results`);
 
     const searchResults: SearchResult[] = results.map(([doc, distance]) => ({
       document: doc as RagDocument,
@@ -116,6 +146,8 @@ export class RagVectorStore implements VectorStore {
     }));
 
     logger.debug(`Found ${searchResults.length} results`);
+    logger.info(`[INSTRUMENT] similaritySearch returned ${searchResults.length} results`);
+    logger.info(`[TRACE 5.6] After score normalization, returning ${searchResults.length} results`);
 
     return searchResults;
   }
@@ -126,6 +158,7 @@ export class RagVectorStore implements VectorStore {
    */
   async deleteAll(): Promise<void> {
     logger.debug(`Deleting all documents from collection: ${this.config.collectionName}`);
+    logger.info(`[INSTRUMENT] deleteAll called with collection="${this.config.collectionName}"`);
 
     // Chroma's delete method requires either ids or a filter.
     // For a full reset, we re-create the collection by nullifying the store
@@ -136,5 +169,6 @@ export class RagVectorStore implements VectorStore {
     await this.getStore();
 
     logger.debug(`Collection reset complete: ${this.config.collectionName}`);
+    logger.info(`[INSTRUMENT] deleteAll completed`);
   }
 }

@@ -145,11 +145,15 @@ router.post(
       const embeddings = new RagEmbeddings();
       const vectorStore = new RagVectorStore(embeddings);
 
+      logger.info(`[INSTRUMENT] Indexing route: embeddings instance created, vectorStore instance created`);
+      logger.info(`[INSTRUMENT] About to add ${totalChunks} documents to collection`);
+
       await vectorStore.addDocuments(indexedChunks);
 
       logger.info(
         `Indexed ${totalChunks} chunks for document ${documentId} in ChromaDB`,
       );
+      logger.info(`[INSTRUMENT] Indexing complete for document ${documentId}`);
 
       // ── Step 5: Return indexing statistics ────────────────────────
       res.status(201).json({
@@ -188,41 +192,53 @@ router.post(
   * No LLM calls are made; embeddings are generated via RagEmbeddings and
   * similarity is computed by RagVectorStore.
   */
- router.post(
-   "/rag/search",
-   async (req, res, next) => {
-     try {
-       const { query, k = 5 } = req.body as { query: string; k?: number };
- 
-       if (!query || typeof query !== "string") {
-         throw new ValidationError("Query must be a non‑empty string", "query");
-       }
- 
-       // Initialize retriever (reuse existing components)
-       const embeddings = new RagEmbeddings();
-       const vectorStore = new RagVectorStore(embeddings);
-       const retriever = new RagRetriever(embeddings, vectorStore);
- 
-       // Perform retrieval
-       const docs = await retriever.retrieve(query);
- 
-       // Map to response format
-       const results = docs.map((doc) => ({
-         content: doc.document.pageContent,
-         score: doc.score,
-         metadata: {
-           documentId: doc.document.metadata?.documentId as string,
-           filename: doc.document.metadata?.filename as string,
-           chunkIndex: doc.document.metadata?.chunkIndex as number,
-           totalChunks: doc.document.metadata?.totalChunks as number,
-         },
-       }));
- 
-       res.json({ results });
-     } catch (error) {
-       next(error);
-     }
-   },
- );
+  router.post(
+    "/rag/search",
+    async (req, res, next) => {
+      try {
+        const { query, k = 5 } = req.body as { query: string; k?: number };
+  
+        if (!query || typeof query !== "string") {
+          throw new ValidationError("Query must be a non‑empty string", "query");
+        }
+  
+        logger.info(`[TRACE 1] Request received: query="${query.slice(0, 80)}...", k=${k}`);
+        logger.info(`[TRACE 2] Query text extracted successfully`);
+  
+         // Initialize retriever (reuse existing components)
+         const embeddings = new RagEmbeddings();
+         const vectorStore = new RagVectorStore(embeddings);
+         const retriever = new RagRetriever(embeddings, vectorStore);
+         
+         logger.info(`[INSTRUMENT] Search route: embeddings instance created, vectorStore instance created`);
+         logger.info(`[TRACE 3] RagService components initialized (embeddings, vectorStore, retriever)`);
+         logger.info(`[INSTRUMENT] About to search with query: "${query.slice(0, 80)}..."`);
+   
+         // Perform retrieval
+         const docs = await retriever.retrieve(query);
+         
+         logger.info(`[INSTRUMENT] Search complete, retrieved ${docs.length} documents`);
+         logger.info(`[TRACE 6] Retriever returned ${docs.length} documents`);
+  
+        // Map to response format
+        const results = docs.map((doc) => ({
+          content: doc.document.pageContent,
+          score: doc.score,
+          metadata: {
+            documentId: doc.document.metadata?.documentId as string,
+            filename: doc.document.metadata?.filename as string,
+            chunkIndex: doc.document.metadata?.chunkIndex as number,
+            totalChunks: doc.document.metadata?.totalChunks as number,
+          },
+        }));
+  
+        logger.info(`[TRACE 7] Route returning ${results.length} results`);
+        res.json({ results });
+      } catch (error) {
+        logger.error(`[TRACE ERROR] Error in search route: ${error}`);
+        next(error);
+      }
+    },
+  );
  
  export default router;

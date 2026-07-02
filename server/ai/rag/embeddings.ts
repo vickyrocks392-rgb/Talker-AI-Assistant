@@ -38,6 +38,7 @@ export class RagEmbeddings implements EmbeddingGenerator {
     this.config = { ...DEFAULT_EMBEDDING_CONFIG, ...config };
 
     logger.debug(`Initializing Ollama embeddings: model=${this.config.model}`);
+    logger.info(`[INSTRUMENT] Embedding model initialized: model="${this.config.model}" baseUrl="${this.config.baseUrl}" dimensions="${this.config.dimensions}"`);
 
     this.embeddings = new OllamaEmbeddings({
       model: this.config.model,
@@ -54,10 +55,12 @@ export class RagEmbeddings implements EmbeddingGenerator {
    */
   async embedQuery(text: string): Promise<number[]> {
     logger.debug(`Embedding query: ${text.slice(0, 80)}...`);
+    logger.info(`[INSTRUMENT] embedQuery called with model="${this.config.model}"`);
 
     const vector = await this.embeddings.embedQuery(text);
 
     logger.debug(`Generated embedding with ${vector.length} dimensions`);
+    logger.info(`[INSTRUMENT] embedQuery generated ${vector.length} dimensions`);
 
     return vector;
   }
@@ -70,12 +73,14 @@ export class RagEmbeddings implements EmbeddingGenerator {
    */
   async embedDocuments(documents: string[]): Promise<number[][]> {
     logger.debug(`Embedding ${documents.length} documents`);
+    logger.info(`[INSTRUMENT] embedDocuments called with model="${this.config.model}" count=${documents.length}`);
 
     const vectors = await this.embeddings.embedDocuments(documents);
 
     logger.debug(
       `Generated ${vectors.length} embeddings, each with ${vectors[0]?.length ?? 0} dimensions`,
     );
+    logger.info(`[INSTRUMENT] embedDocuments generated ${vectors.length} embeddings, each with ${vectors[0]?.length ?? 0} dimensions`);
 
     return vectors;
   }

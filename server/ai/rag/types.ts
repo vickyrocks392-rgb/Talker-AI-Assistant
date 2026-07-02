@@ -117,8 +117,10 @@ export interface EmbeddingGenerator {
 export interface VectorStoreConfig {
   /** Name of the collection to use/create in the vector store. */
   collectionName: string;
-  /** Path to the ChromaDB persistence directory. */
-  persistDirectory?: string;
+  /** Host of the ChromaDB server. */
+  host?: string;
+  /** Port of the ChromaDB server. */
+  port?: number;
   /** Number of dimensions for stored vectors. */
   dimensions?: number;
 }
@@ -196,10 +198,11 @@ export const DEFAULT_RAG_CONFIG: RagPipelineConfig = {
   },
   vectorStore: {
     collectionName: "talker_rag",
-    persistDirectory: "./storage/rag",
+    host: "localhost",
+    port: 8000,
   },
   retriever: {
     k: 4,
-    scoreThreshold: 0.7,
+    scoreThreshold: 0.3,
   },
 };
