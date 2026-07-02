@@ -20,6 +20,7 @@ import { PdfLoader } from "../ai/rag/pdfLoader";
 import { RagSplitter } from "../ai/rag/splitter";
 import { RagEmbeddings } from "../ai/rag/embeddings";
 import { RagVectorStore } from "../ai/rag/vectorstore";
+import { RagRetriever } from "../ai/rag/retriever";
 import { createLogger } from "../utils/logger";
 import { ValidationError } from "../utils/errors";
 import type { RagDocument } from "../ai/rag/types";
@@ -72,6 +73,7 @@ const router = Router();
 router.post(
   "/rag/upload",
   (req, res, next) => {
+    // Existing upload endpoint
     upload.single("file")(req, res, (err) => {
       if (err) {
         if (err instanceof multer.MulterError) {
@@ -163,5 +165,64 @@ router.post(
     }
   },
 );
-
-export default router;
+ 
+ /**
+  * POST /api/rag/search
+  *
+  * Perform a semantic search over indexed documents.
+  *
+  * Request body: { query: string, k?: number }
+  * Response: {
+  *   results: Array<{
+  *     content: string;
+  *     score: number;
+  *     metadata: {
+  *       documentId: string;
+  *       filename: string;
+  *       chunkIndex: number;
+  *       totalChunks: number;
+  *     };
+  *   }>;
+  * }
+  *
+  * No LLM calls are made; embeddings are generated via RagEmbeddings and
+  * similarity is computed by RagVectorStore.
+  */
+ router.post(
+   "/rag/search",
+   async (req, res, next) => {
+     try {
+       const { query, k = 5 } = req.body as { query: string; k?: number };
+ 
+       if (!query || typeof query !== "string") {
+         throw new ValidationError("Query must be a non‑empty string", "query");
+       }
+ 
+       // Initialize retriever (reuse existing components)
+       const embeddings = new RagEmbeddings();
+       const vectorStore = new RagVectorStore(embeddings);
+       const retriever = new RagRetriever(embeddings, vectorStore);
+ 
+       // Perform retrieval
+       const docs = await retriever.retrieve(query);
+ 
+       // Map to response format
+       const results = docs.map((doc) => ({
+         content: doc.document.pageContent,
+         score: doc.score,
+         metadata: {
+           documentId: doc.document.metadata?.documentId as string,
+           filename: doc.document.metadata?.filename as string,
+           chunkIndex: doc.document.metadata?.chunkIndex as number,
+           totalChunks: doc.document.metadata?.totalChunks as number,
+         },
+       }));
+ 
+       res.json({ results });
+     } catch (error) {
+       next(error);
+     }
+   },
+ );
+ 
+ export default router;

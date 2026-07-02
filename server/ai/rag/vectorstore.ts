@@ -56,9 +56,17 @@ export class RagVectorStore implements VectorStore {
     if (!this.store) {
       logger.debug(`Creating Chroma collection: ${this.config.collectionName}`);
 
+      // Use embedded persistent Chroma by providing a ChromaClient instance.
+      // When an `index` is provided, LangChain's Chroma wrapper uses it directly
+      // instead of creating an HTTP client.
+      const { ChromaClient } = await Chroma.imports();
+      const client = new ChromaClient({
+        path: this.config.persistDirectory,
+      });
+
       this.store = new Chroma(this.embeddings, {
+        index: client,
         collectionName: this.config.collectionName,
-        url: "http://localhost:8000",
         numDimensions: this.config.dimensions,
       });
 
