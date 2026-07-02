@@ -44,6 +44,7 @@ import { handleSummarize } from "./server/routes/summarize";
 import { handleTTS } from "./server/routes/tts";
 import healthRouter from "./server/routes/health";
 import conversationsRouter from "./server/routes/conversations";
+import ragRouter from "./server/routes/rag";
 
 // Tool Engine
 import { ToolRegistry } from "./server/ai/tools/registry";
@@ -70,6 +71,7 @@ app.post("/api/chat", handleChat);
 app.post("/api/summarize", handleSummarize);
 app.post("/api/tts", handleTTS);
 app.use("/", conversationsRouter);
+app.use("/api", ragRouter);
 
 // Catch-all for unknown /api/* paths
 app.use("/api", apiNotFoundHandler);
