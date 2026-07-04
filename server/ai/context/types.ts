@@ -11,6 +11,7 @@
 
 import type { OllamaMessage } from "../types";
 import type { Persona, ConversationMessage } from "../types";
+import type { ExecutionPlan } from "../orchestrator/types";
 
 // ── Priority levels for token budgeting ─────────────────────────────
 
@@ -51,6 +52,13 @@ export interface ContextBuilderOptions {
 
   /** Maximum context size in characters (approximate token budget). */
   maxContextChars?: number;
+
+  /**
+   * Optional execution plan from the Orchestrator.
+   * When provided, the Context Builder will only activate the context
+   * sources specified in the plan, skipping unnecessary work.
+   */
+  executionPlan?: ExecutionPlan;
 }
 
 // ── Output from the Context Builder ─────────────────────────────────

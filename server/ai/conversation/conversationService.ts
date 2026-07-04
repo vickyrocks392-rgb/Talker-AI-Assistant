@@ -2,22 +2,25 @@
  * ConversationService — orchestrator for chat conversations.
  *
  * Phase 5: Refactored to use the Context Builder subsystem.
- * ConversationService no longer manually assembles prompts.
- * Its responsibilities are:
+ * Phase 6: Integrated with the Intelligent Orchestration Layer.
  *
+ * The Orchestrator now sits between the request and the Context Builder,
+ * producing an ExecutionPlan that tells the Context Builder which context
+ * sources to activate and which to skip.
+ *
+ * Flow:
  *   1. Receive request
- *   2. Call Context Builder
- *   3. Call Provider
- *   4. Persist Memory
- *   5. Return Response
+ *   2. Call Orchestrator → ExecutionPlan
+ *   3. Call Context Builder with ExecutionPlan
+ *   4. Call Provider
+ *   5. Persist Memory
+ *   6. Return Response
  *
- * The Context Builder handles:
- *   - System prompt generation
- *   - Conversation history loading
- *   - RAG context retrieval
- *   - Tool planning and execution
- *   - Token budgeting
- *   - Message formatting
+ * The Orchestrator eliminates unnecessary work:
+ *   - Greetings: no RAG, no tools
+ *   - Calculator: no RAG, no memory
+ *   - Resume questions: RAG only, no tools
+ *   - General chat: memory only, no RAG
  */
 
 import { parseChatResponse, StreamReplyExtractor } from "../parser";
@@ -26,6 +29,7 @@ import { createLogger } from "../../utils/logger";
 import { getUserFriendlyErrorMessage } from "../../utils/errors";
 import { memoryService } from "../../memory/service";
 import { ContextBuilder } from "../context";
+import { orchestrate } from "../orchestrator";
 import type { OllamaMessage, ChatResponse } from "../types";
 import type { Persona, ConversationMessage } from "../types";
 
@@ -60,23 +64,37 @@ const contextBuilder = new ContextBuilder();
  * Handle a non-streaming chat request.
  *
  * Orchestration flow:
- *   1. Call Context Builder to assemble messages
- *   2. Call AI provider
- *   3. Parse the response
- *   4. Persist to memory
- *   5. Return the response
+ *   1. Call Orchestrator to produce an execution plan
+ *   2. Call Context Builder with the execution plan
+ *   3. Call AI provider
+ *   4. Parse the response
+ *   5. Persist to memory
+ *   6. Return the response
  */
 export async function handleNonStreaming(
   request: ConversationServiceRequest,
 ): Promise<ChatResponse> {
   const { text, conversationId, persona } = request;
 
-  // Step 1: Build context using the Context Builder
+  // Step 1: Orchestrate — determine which context sources to use
+  const { plan } = await orchestrate(text);
+
+  logger.debug("Execution plan", {
+    mode: plan.mode,
+    useMemory: plan.useMemory,
+    useRag: plan.useRag,
+    useTools: plan.useTools,
+    tool: plan.tool,
+    reason: plan.reason,
+  });
+
+  // Step 2: Build context using the Context Builder with the execution plan
   const { messages, metadata } = await contextBuilder.build({
     text,
     conversationId,
     history: request.history,
     persona,
+    executionPlan: plan,
   });
 
   logger.debug("Context built", {
@@ -85,14 +103,15 @@ export async function handleNonStreaming(
     hasRag: metadata.hasRagContext,
     hasTool: metadata.hasToolResult,
     historyCount: metadata.historyMessageCount,
+    planMode: plan.mode,
   });
 
-  // Step 2: Call AI provider
+  // Step 3: Call AI provider
   const provider = getAIProvider();
   const response = await provider.chat({ messages });
   const parsed = parseChatResponse(response.message.content);
 
-  // Step 3: Persist to memory
+  // Step 4: Persist to memory
   if (conversationId) {
     memoryService.saveMessage(conversationId, "user", text);
     memoryService.saveMessage(conversationId, "assistant", parsed.replyText);
@@ -108,6 +127,7 @@ export async function handleNonStreaming(
     replyLength: parsed.replyText.length,
     mapType: parsed.mapAction.type,
     hasConversationId: !!conversationId,
+    planMode: plan.mode,
   });
 
   return chatResponse;
@@ -117,11 +137,12 @@ export async function handleNonStreaming(
  * Handle a streaming chat request.
  *
  * Orchestration flow:
- *   1. Call Context Builder to assemble messages (before streaming)
- *   2. Call AI provider with streaming
- *   3. Parse tokens as they arrive
- *   4. Persist to memory on completion
- *   5. Signal completion via callbacks
+ *   1. Call Orchestrator to produce an execution plan
+ *   2. Call Context Builder with the execution plan (before streaming)
+ *   3. Call AI provider with streaming
+ *   4. Parse tokens as they arrive
+ *   5. Persist to memory on completion
+ *   6. Signal completion via callbacks
  */
 export async function handleStreaming(
   request: ConversationServiceRequest,
@@ -131,7 +152,19 @@ export async function handleStreaming(
 ): Promise<void> {
   const { text, conversationId, persona } = request;
 
-  // Step 1: Build context using the Context Builder
+  // Step 1: Orchestrate — determine which context sources to use
+  const { plan } = await orchestrate(text);
+
+  logger.debug("Execution plan for streaming", {
+    mode: plan.mode,
+    useMemory: plan.useMemory,
+    useRag: plan.useRag,
+    useTools: plan.useTools,
+    tool: plan.tool,
+    reason: plan.reason,
+  });
+
+  // Step 2: Build context using the Context Builder with the execution plan
   // This happens BEFORE streaming starts, so streaming continues to work
   // without any frontend changes.
   const { messages, metadata } = await contextBuilder.build({
@@ -139,6 +172,7 @@ export async function handleStreaming(
     conversationId,
     history: request.history,
     persona,
+    executionPlan: plan,
   });
 
   logger.debug("Context built for streaming", {
@@ -147,9 +181,10 @@ export async function handleStreaming(
     hasRag: metadata.hasRagContext,
     hasTool: metadata.hasToolResult,
     historyCount: metadata.historyMessageCount,
+    planMode: plan.mode,
   });
 
-  // Step 2: Call AI provider with streaming
+  // Step 3: Call AI provider with streaming
   const provider = getAIProvider();
 
   let fullContent = "";
@@ -168,10 +203,19 @@ export async function handleStreaming(
         try {
           const parsed = parseChatResponse(fullContent);
 
-          // Step 3: Persist to memory after successful stream completion
+          // Step 4: Persist to memory after successful stream completion
           if (conversationId) {
             memoryService.saveMessage(conversationId, "user", text);
             memoryService.saveMessage(conversationId, "assistant", parsed.replyText);
+            
+            // Log what was persisted
+            logger.debug("Messages persisted to memory", {
+              conversationId,
+              userMessage: text,
+              assistantMessage: parsed.replyText,
+              replyLength: parsed.replyText.length,
+              mapType: parsed.mapAction.type,
+            });
           }
 
           const chatResponse: ChatResponse = {

@@ -17,6 +17,10 @@
  *   - TokenBudgeter for prompt size management
  *   - Formatters for structured data → text conversion
  *
+ * Phase 6: The builder now accepts an optional ExecutionPlan from the
+ * Orchestrator. When provided, only the context sources specified in
+ * the plan are activated, eliminating unnecessary work.
+ *
  * ConversationService should use this builder instead of manually
  * assembling messages.
  */
@@ -33,6 +37,7 @@ import { createLogger } from "../../utils/logger";
 import type { OllamaMessage } from "../types";
 import type { Persona, ConversationMessage } from "../types";
 import type { ContextBuilderOptions, ContextBuilderResult, ContextMetadata, ContextSection } from "./types";
+import type { ExecutionPlan } from "../orchestrator/types";
 
 const logger = createLogger("ContextBuilder");
 
@@ -63,30 +68,44 @@ export class ContextBuilder {
   /**
    * Build the complete LLM context from all available sources.
    *
+   * When an executionPlan is provided, only the context sources specified
+   * in the plan are activated. This eliminates unnecessary work like
+   * generating embeddings, querying Chroma, or running the tool planner
+   * for requests that don't need them.
+   *
    * Assembly order:
    *   1. System Prompt
-   *   2. Conversation Memory (history)
-   *   3. Retrieved Knowledge (RAG) — only if available
-   *   4. Tool Context — only if a tool matches
+   *   2. Conversation Memory (history) — only if plan.useMemory
+   *   3. Retrieved Knowledge (RAG) — only if plan.useRag
+   *   4. Tool Context — only if plan.useTools
    *   5. Current User Message
    *
    * @param options - The builder options (text, conversationId, etc.).
    * @returns The assembled context with metadata.
    */
   async build(options: ContextBuilderOptions): Promise<ContextBuilderResult> {
-    const { text, conversationId, history, persona } = options;
+    const { text, conversationId, history, persona, executionPlan } = options;
 
     // ── 1. System Prompt ──────────────────────────────────────────
     const systemPrompt = createChatSystemPrompt(persona);
 
-    // ── 2. Conversation Memory ────────────────────────────────────
-    const historyMessages = this.loadHistory(conversationId, history);
+    // ── 2. Conversation Memory (conditional) ──────────────────────
+    const shouldUseMemory = executionPlan ? executionPlan.useMemory : true;
+    const historyMessages = shouldUseMemory
+      ? this.loadHistory(conversationId, history)
+      : [];
 
-    // ── 3. RAG Context ────────────────────────────────────────────
-    const ragResult = await this.retrieveRagContext(text);
+    // ── 3. RAG Context (conditional) ──────────────────────────────
+    const shouldUseRag = executionPlan ? executionPlan.useRag : true;
+    const ragResult = shouldUseRag
+      ? await this.retrieveRagContext(text)
+      : null;
 
-    // ── 4. Tool Context ───────────────────────────────────────────
-    const toolResult = await this.executeToolIfNeeded(text);
+    // ── 4. Tool Context (conditional) ─────────────────────────────
+    const shouldUseTools = executionPlan ? executionPlan.useTools : true;
+    const toolResult = shouldUseTools
+      ? await this.executeToolIfNeeded(text, executionPlan)
+      : null;
 
     // ── Build sections for budgeting ──────────────────────────────
     const sections: ContextSection[] = [];
@@ -163,7 +182,8 @@ export class ContextBuilder {
       `${metadata.totalChars} chars, ` +
       `rag=${metadata.hasRagContext}, ` +
       `tool=${metadata.hasToolResult}, ` +
-      `history=${metadata.historyMessageCount}`,
+      `history=${metadata.historyMessageCount}` +
+      (executionPlan ? `, plan=${executionPlan.mode}` : ""),
     );
 
     return { messages, metadata };
@@ -230,10 +250,36 @@ export class ContextBuilder {
   /**
    * Run the deterministic planner. If a tool matches, execute it and
    * return the formatted result. Returns null if no tool matches.
+   *
+   * When an execution plan specifies a specific tool, that tool is used
+   * directly without running the planner (saving a pattern-matching pass).
    */
   private async executeToolIfNeeded(
     text: string,
+    executionPlan?: ExecutionPlan,
   ): Promise<{ toolName: string; result: import("../tools/types").ToolResult } | null> {
+    // If the execution plan specifies a tool, use it directly
+    if (executionPlan?.tool) {
+      logger.info(`Using pre-resolved tool from plan: ${executionPlan.tool}`);
+
+      const result = await executeTool({
+        toolName: executionPlan.tool,
+        args: {},
+      });
+
+      if (result.success) {
+        logger.info(`Tool "${executionPlan.tool}" succeeded`);
+      } else {
+        logger.warn(
+          `Tool "${executionPlan.tool}" failed: ` +
+          `${(result as { success: false; error: string }).error}`,
+        );
+      }
+
+      return { toolName: executionPlan.tool, result };
+    }
+
+    // Otherwise, run the planner to find a matching tool
     const toolRequest = plan(text);
 
     if (!toolRequest) {
