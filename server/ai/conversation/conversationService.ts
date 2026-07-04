@@ -76,9 +76,12 @@ export async function handleNonStreaming(
 ): Promise<ChatResponse> {
   const { text, conversationId, persona } = request;
 
+  logger.info(`[TRACE 0] handleNonStreaming() called with text="${text.slice(0, 80)}..."`);
+  
   // Step 1: Orchestrate — determine which context sources to use
   const { plan } = await orchestrate(text);
 
+  logger.info(`[TRACE 0.1] Orchestration complete: mode=${plan.mode}, useRag=${plan.useRag}, useMemory=${plan.useMemory}, useTools=${plan.useTools}`);
   logger.debug("Execution plan", {
     mode: plan.mode,
     useMemory: plan.useMemory,
@@ -89,6 +92,8 @@ export async function handleNonStreaming(
   });
 
   // Step 2: Build context using the Context Builder with the execution plan
+  logger.info(`[TRACE 0.2] Calling contextBuilder.build() with executionPlan (useRag=${plan.useRag})`);
+  
   const { messages, metadata } = await contextBuilder.build({
     text,
     conversationId,
@@ -97,6 +102,7 @@ export async function handleNonStreaming(
     executionPlan: plan,
   });
 
+  logger.info(`[TRACE 0.3] Context built: ${messages.length} messages, hasRag=${metadata.hasRagContext}, ragChunkCount=${metadata.ragChunkCount}`);
   logger.debug("Context built", {
     messageCount: messages.length,
     totalChars: metadata.totalChars,

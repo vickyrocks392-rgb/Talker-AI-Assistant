@@ -47,6 +47,8 @@ class RagService {
   private retriever: RagRetriever | null = null;
   private initialized = false;
   private initError: Error | null = null;
+  private lastHealthCheck: boolean | null = null;
+  private healthCheckInProgress = false;
 
   /**
    * Lazily initialise the RAG pipeline components.
@@ -111,12 +113,14 @@ class RagService {
     }
 
     try {
+      logger.info(`[TRACE 10] RagService.retrieveContext() called with query="${query.slice(0, 80)}..."`);
       logger.debug(`Retrieving context for query: "${query.slice(0, 80)}..."`);
 
       const results = await this.retriever.retrieve(query);
 
       if (results.length === 0) {
         logger.debug("No relevant chunks found");
+        logger.info(`[TRACE 11] RagService.retrieveContext() returned 0 results`);
         return null;
       }
 
@@ -128,6 +132,15 @@ class RagService {
       logger.info(
         `Retrieved ${results.length} chunks (avg score: ${avgScore.toFixed(3)})`
       );
+      
+      // DETAILED TRACE LOGGING
+      logger.info(`[TRACE 11] RagService.retrieveContext() returned ${results.length} results`);
+      logger.info(`[TRACE 12] Document IDs returned: ${results.map(r => r.document.metadata?.documentId || 'NO_ID').join(', ')}`);
+      logger.info(`[TRACE 13] Similarity scores: ${results.map(r => `${(r.score * 100).toFixed(1)}%`).join(', ')}`);
+      results.forEach((result, index) => {
+        const chunkPreview = result.document.pageContent.slice(0, 100);
+        logger.info(`[TRACE 14] Chunk ${index + 1} (ID: ${result.document.metadata?.documentId || 'NO_ID'}, Score: ${(result.score * 100).toFixed(1)}%): "${chunkPreview}..."`);
+      });
 
       return {
         context,
@@ -137,6 +150,7 @@ class RagService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error(`RAG retrieval failed: ${errorMessage}`);
+      logger.info(`[TRACE ERROR] RAG retrieval failed: ${errorMessage}`);
       return null;
     }
   }
@@ -170,21 +184,82 @@ class RagService {
 
   /**
    * Check if the RAG service is initialized and available.
+   * Performs a lightweight connectivity check to verify ChromaDB is reachable.
+   *
+   * @returns true if the service is initialized and ChromaDB is reachable
    */
-  isAvailable(): boolean {
-    return this.retriever !== null;
+  async isAvailable(): Promise<boolean> {
+    // If we have a cached health check result, use it
+    if (this.lastHealthCheck !== null) {
+      return this.lastHealthCheck;
+    }
+
+    // If not initialized, try to initialize
+    if (!this.retriever) {
+      const success = await this.initialize();
+      if (!success) {
+        this.lastHealthCheck = false;
+        return false;
+      }
+    }
+
+    // If still no retriever, not available
+    if (!this.retriever) {
+      this.lastHealthCheck = false;
+      return false;
+    }
+
+    // Perform lightweight connectivity check
+    try {
+      const isHealthy = await this.vectorStore!.isHealthy();
+      this.lastHealthCheck = isHealthy;
+      return isHealthy;
+    } catch (error) {
+      logger.debug(`Health check failed: ${error}`);
+      this.lastHealthCheck = false;
+      return false;
+    }
+  }
+
+  /**
+   * Reset the cached health check status.
+   * Called after initialization or reset to force a fresh health check.
+   */
+  private resetHealthCheck(): void {
+    this.lastHealthCheck = null;
   }
 
   /**
    * Reset the RAG service (useful for testing or reinitialization).
+   * Clears the Chroma collection and reinitializes components.
    */
-  reset(): void {
-    this.embeddings = null;
-    this.vectorStore = null;
-    this.retriever = null;
-    this.initialized = false;
-    this.initError = null;
-    logger.debug("RAG service reset");
+  async reset(): Promise<void> {
+    try {
+      logger.info(`[TRACE 15] RagService.reset() called`);
+      
+      // Delete all documents from the Chroma collection if vector store exists
+      if (this.vectorStore) {
+        logger.info("Deleting all documents from Chroma collection...");
+        await this.vectorStore.deleteAll();
+        logger.info("Chroma collection cleared successfully");
+      } else {
+        logger.warn("[TRACE 15] RagService.reset() called but vectorStore is null - nothing to reset");
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.warn(`Failed to clear Chroma collection: ${errorMessage}`);
+      logger.info(`[TRACE ERROR] Failed to clear Chroma collection: ${errorMessage}`);
+    } finally {
+      // Clear in-memory references
+      this.embeddings = null;
+      this.vectorStore = null;
+      this.retriever = null;
+      this.initialized = false;
+      this.initError = null;
+      this.resetHealthCheck();
+      logger.debug("RAG service reset complete");
+      logger.info(`[TRACE 16] RagService.reset() complete - all references cleared`);
+    }
   }
 }
 

@@ -38,6 +38,9 @@ import { getAIProvider } from "./server/ai/provider";
 import { createLogger } from "./server/utils/logger";
 import { ConfigError } from "./server/utils/errors";
 
+// Database
+import { getDatabase } from "./server/db/database";
+
 // Route handlers
 import { handleChat } from "./server/routes/chat";
 import { handleSummarize } from "./server/routes/summarize";
@@ -83,26 +86,113 @@ app.use(globalErrorHandler);
 
 async function start() {
   try {
-    logger.info("Validating configuration...");
+    // ── Environment ─────────────────────────────────────────────────
+    logger.info("╔══════════════════════════════════════╗");
+    logger.info("║  Talker AI Assistant v2              ║");
+    logger.info("╚══════════════════════════════════════╝");
+    logger.info("");
+    logger.info("Environment:");
+    logger.info(`  Node.js:     ${process.version}`);
+    logger.info(`  Platform:    ${process.platform}`);
+    logger.info(`  Environment: ${config.server.isDevelopment ? "development" : "production"}`);
+    logger.info(`  AI Provider: ${config.aiProvider}`);
 
     // Log provider-specific info
     if (config.aiProvider === "groq") {
-      logger.info(`Using model: ${config.groq.modelName}`);
-      logger.info(`AI provider: Groq`);
+      logger.info(`  Model:       ${config.groq.modelName}`);
     } else {
-      logger.info(`Using model: ${config.ollama.modelName}`);
-      logger.info(`Ollama endpoint: ${config.ollama.baseUrl}/api/chat`);
+      logger.info(`  Model:       ${config.ollama.modelName}`);
+      logger.info(`  Ollama URL:  ${config.ollama.baseUrl}`);
     }
+    logger.info("");
 
-    // Warm up the provider (lazy singleton initialisation)
+    // ── Dependencies ────────────────────────────────────────────────
+    logger.info("Checking dependencies...");
+
+    // Initialize AI provider
     getAIProvider();
-    logger.info("AI provider initialized");
+    logger.info("  ✓ AI Provider");
 
-    // ── Tool Engine registration ──────────────────────────────────
+    // Initialize Tool Engine
     const registry = ToolRegistry.getInstance();
     registry.register(new CalculatorTool());
     registry.register(new DateTimeTool());
-    logger.info(`Tool Engine initialized with ${registry.list().length} tools`);
+    logger.info(`  ✓ Tool Engine (${registry.list().length} tools)`);
+
+    // Check SQLite
+    try {
+      const db = getDatabase();
+      db.prepare("SELECT 1").get();
+      logger.info("  ✓ SQLite");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.warn(`  ✗ SQLite: ${errorMessage}`);
+    }
+
+    // Check Ollama connectivity
+    try {
+      if (config.aiProvider === "ollama") {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        const response = await fetch(`${config.ollama.baseUrl}/api/tags`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (response.ok) {
+          logger.info("  ✓ Ollama");
+        } else {
+          logger.warn("  ✗ Ollama: Server returned non-OK status");
+        }
+      } else {
+        logger.info("  ✓ Groq (API key configured)");
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.warn(`  ✗ Ollama: ${errorMessage}`);
+    }
+
+    // Check ChromaDB
+    try {
+      const { ragService } = await import("./server/ai/rag/service");
+      const isAvailable = await ragService.isAvailable();
+      if (!isAvailable) {
+        await ragService.retrieveContext("startup check");
+      }
+      
+      // Verify ChromaDB is actually available after the check
+      if (await ragService.isAvailable()) {
+        logger.info("  ✓ ChromaDB");
+      } else {
+        logger.warn("  ✗ ChromaDB (unavailable)");
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.warn(`  ✗ ChromaDB: ${errorMessage}`);
+    }
+
+    // Check RAG Collection
+    try {
+      const { ragService } = await import("./server/ai/rag/service");
+      const context = await ragService.retrieveContext("startup check");
+      
+      // Only report success if ChromaDB is actually available
+      if (await ragService.isAvailable()) {
+        if (context && context.chunkCount > 0) {
+          logger.info(`  ✓ RAG Collection (${context.chunkCount} chunks indexed)`);
+        } else {
+          logger.info("  ✓ RAG Collection (empty, ready for documents)");
+        }
+      } else {
+        logger.warn("  ✗ RAG Collection (unavailable)");
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.warn(`  ✗ RAG Collection: ${errorMessage}`);
+    }
+
+    logger.info("");
+    logger.info("Server Ready");
+    logger.info("");
 
     // Frontend serving
     if (config.server.isDevelopment) {
@@ -126,30 +216,28 @@ async function start() {
     }
 
     app.listen(config.server.port, "0.0.0.0", () => {
-      logger.info(`\n╔══════════════════════════════════════╗`);
-      logger.info(`║  Talker AI Backend Started           ║`);
-      logger.info(`╚══════════════════════════════════════╝\n`);
-      logger.info(`Server:   http://localhost:${config.server.port}`);
-      logger.info(`Model:    ${config.aiProvider === "groq" ? config.groq.modelName : config.ollama.modelName}`);
-      if (config.aiProvider === "ollama") {
-        logger.info(`Ollama:   ${config.ollama.baseUrl}\n`);
-      } else {
-        logger.info(`\n`);
-      }
-      logger.info(`API Endpoints:`);
-      logger.info(`  POST   /api/chat       Chat with streaming support`);
-      logger.info(`  POST   /api/summarize  Generate conversation title`);
-      logger.info(`  POST   /api/tts        Text-to-speech fallback`);
-      logger.info(`  GET    /health         Server health check`);
-      logger.info(`  GET    /api/conversations          List conversations`);
-      logger.info(`  POST   /api/conversations          Create conversation`);
-      logger.info(`  GET    /api/conversations/:id      Get conversation`);
-      logger.info(`  PATCH  /api/conversations/:id      Update conversation`);
-      logger.info(`  DELETE /api/conversations/:id      Delete conversation\n`);
-
-      if (config.server.isDevelopment) {
-        logger.info(`Frontend: http://localhost:${config.server.port}\n`);
-      }
+      logger.info("═══════════════════════════════════════════");
+      logger.info("Server:");
+      logger.info(`  URL:         http://localhost:${config.server.port}`);
+      logger.info(`  Frontend:    http://localhost:${config.server.port}`);
+      logger.info("");
+      logger.info("API Endpoints:");
+      logger.info("  POST   /api/chat                    Chat with streaming support");
+      logger.info("  POST   /api/summarize               Generate conversation title");
+      logger.info("  POST   /api/tts                     Text-to-speech fallback");
+      logger.info("  GET    /health                      Liveness probe");
+      logger.info("  GET    /ready                       Readiness probe");
+      logger.info("  GET    /version                     Build metadata");
+      logger.info("  GET    /api/health                  Comprehensive health check");
+      logger.info("  GET    /api/conversations           List conversations");
+      logger.info("  POST   /api/conversations           Create conversation");
+      logger.info("  GET    /api/conversations/:id       Get conversation");
+      logger.info("  PATCH  /api/conversations/:id       Update conversation");
+      logger.info("  DELETE /api/conversations/:id       Delete conversation");
+      logger.info("  POST   /api/rag/upload              Upload PDF for indexing");
+      logger.info("  POST   /api/rag/search              Semantic search");
+      logger.info("  POST   /api/rag/reset               Reset RAG collection (dev only)");
+      logger.info("");
     });
   } catch (error) {
     logger.error("Failed to start server", error);

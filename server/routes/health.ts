@@ -10,6 +10,7 @@ import { getConfig } from "../config/env";
 import { getActiveModel, getOllamaBaseUrl } from "../ai/config";
 import { getAIProvider } from "../ai/provider";
 import { APP_NAME, APP_VERSION } from "../config/version";
+import { getHealth } from "../services/health";
 
 const router = Router();
 
@@ -23,6 +24,26 @@ router.get("/health", (_req, res) => {
     model: getActiveModel().name,
     timestamp: new Date().toISOString(),
   });
+});
+
+/**
+ * GET /api/health
+ * Comprehensive health check — returns status of all system dependencies.
+ */
+router.get("/api/health", async (_req, res) => {
+  try {
+    const report = await getHealth();
+    res.json(report);
+  } catch (error) {
+    res.status(500).json({
+      backend: true,
+      ollama: false,
+      chromadb: false,
+      sqlite: false,
+      ragReady: false,
+      error: "Health check failed",
+    });
+  }
 });
 
 /**

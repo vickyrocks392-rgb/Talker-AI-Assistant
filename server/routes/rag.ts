@@ -241,4 +241,52 @@ router.post(
     },
   );
  
- export default router;
+  /**
+   * POST /api/rag/reset
+   *
+   * Reset the RAG collection by deleting and recreating it.
+   * Development use only — clears all indexed documents.
+   *
+   * Response: { success: true, message: string }
+   */
+  router.post("/rag/reset", async (_req, res, next) => {
+    try {
+      logger.info("Resetting RAG collection...");
+      logger.info(`[TRACE 18] /api/rag/reset endpoint called`);
+
+      // Reuse existing RAG service
+      const { ragService } = await import("../ai/rag/service");
+      
+      logger.info(`[TRACE 18.1] ragService imported, calling reset()`);
+      
+      // Reset the service (clears Chroma collection and internal state)
+      await ragService.reset();
+
+      logger.info("RAG collection reset successfully");
+      logger.info(`[TRACE 18.2] Reset complete, sending response to client`);
+      
+      // TRACE 19: Verify collection is empty after reset
+      try {
+        const { RagVectorStore } = await import("../ai/rag/vectorstore");
+        const { RagEmbeddings } = await import("../ai/rag/embeddings");
+        const embeddings = new RagEmbeddings();
+        const verifyStore = new RagVectorStore(embeddings);
+        const countAfterReset = await verifyStore.getDocumentCount();
+        logger.info(`[TRACE 19] Collection count AFTER /api/rag/reset: ${countAfterReset} (should be 0)`);
+        logger.info(`[TRACE 19.1] Verified collection "${verifyStore["config"].collectionName}" at http://${verifyStore["config"].host}:${verifyStore["config"].port}`);
+      } catch (e) {
+        logger.debug(`[TRACE 19] Could not verify collection count after reset: ${e}`);
+      }
+      
+      res.status(200).json({
+        success: true,
+        message: "RAG collection has been reset. Ready for new documents.",
+      });
+    } catch (error) {
+      logger.error("Failed to reset RAG collection", error);
+      logger.info(`[TRACE ERROR] Reset failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      next(error);
+    }
+  });
+
+  export default router;
