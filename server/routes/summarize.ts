@@ -8,12 +8,14 @@ import { validateSummaryRequest } from "../utils/validation";
 import { summarizeConversation } from "../ai/summarize";
 import { SummaryResponse } from "../ai/types";
 import { createLogger } from "../utils/logger";
+import { OllamaError, ParseError } from "../utils/errors";
 
 const logger = createLogger("SummarizeRoute");
 
 export async function handleSummarize(
   req: express.Request,
   res: express.Response,
+  next: express.NextFunction,
 ): Promise<void> {
   try {
     const { messages } = validateSummaryRequest(req.body as Record<string, unknown>);
@@ -29,9 +31,14 @@ export async function handleSummarize(
 
     res.json(response);
   } catch (error: unknown) {
-    logger.error("Summarize error", error);
+    // Model-level failures (Ollama down, parse errors) → graceful fallback
+    if (error instanceof OllamaError || error instanceof ParseError) {
+      logger.error("Summarize model error", error);
+      res.json({ summary: "Personal Companion Chat" } satisfies SummaryResponse);
+      return;
+    }
 
-    // Always return a default summary on error
-    res.json({ summary: "Personal Companion Chat" } satisfies SummaryResponse);
+    // Infrastructure errors (validation, config, DB, unexpected) → global error handler
+    next(error);
   }
 }

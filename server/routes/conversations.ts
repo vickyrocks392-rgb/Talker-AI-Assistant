@@ -8,7 +8,7 @@
 import { Router } from "express";
 import { memoryService } from "../memory/service";
 import { createLogger } from "../utils/logger";
-import { ValidationError } from "../utils/errors";
+import { ValidationError, NotFoundError } from "../utils/errors";
 import type { Conversation } from "../memory/types";
 
 const logger = createLogger("ConversationsRoute");
@@ -88,13 +88,7 @@ router.get("/api/conversations/:id", (req, res) => {
   const conversation = memoryService.getConversation(id);
 
   if (!conversation) {
-    res.status(404).json({
-      error: {
-        code: "NOT_FOUND",
-        message: `Conversation with id "${id}" not found.`,
-      },
-    });
-    return;
+    throw new NotFoundError(`Conversation with id "${id}" not found.`);
   }
 
   const messages = memoryService.getMessages(id);
@@ -126,13 +120,7 @@ router.patch("/api/conversations/:id", (req, res) => {
   const conversation = memoryService.renameConversation(id, title);
 
   if (!conversation) {
-    res.status(404).json({
-      error: {
-        code: "NOT_FOUND",
-        message: `Conversation with id "${id}" not found.`,
-      },
-    });
-    return;
+    throw new NotFoundError(`Conversation with id "${id}" not found.`);
   }
 
   res.json(conversation);
@@ -154,13 +142,7 @@ router.delete("/api/conversations/:id", (req, res) => {
   const conversation = memoryService.getConversation(id);
 
   if (!conversation) {
-    res.status(404).json({
-      error: {
-        code: "NOT_FOUND",
-        message: `Conversation with id "${id}" not found.`,
-      },
-    });
-    return;
+    throw new NotFoundError(`Conversation with id "${id}" not found.`);
   }
 
   memoryService.deleteConversation(id);

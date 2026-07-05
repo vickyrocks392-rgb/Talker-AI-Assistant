@@ -11,6 +11,9 @@ import { getActiveModel, getOllamaBaseUrl } from "../ai/config";
 import { getAIProvider } from "../ai/provider";
 import { APP_NAME, APP_VERSION } from "../config/version";
 import { getHealth } from "../services/health";
+import { createLogger } from "../utils/logger";
+
+const logger = createLogger("HealthRoute");
 
 const router = Router();
 
@@ -30,11 +33,12 @@ router.get("/health", (_req, res) => {
  * GET /api/health
  * Comprehensive health check — returns status of all system dependencies.
  */
-router.get("/api/health", async (_req, res) => {
+router.get("/api/health", async (_req, res, next) => {
   try {
     const report = await getHealth();
     res.json(report);
   } catch (error) {
+    logger.error("Health check failed", error);
     res.status(500).json({
       backend: true,
       ollama: false,

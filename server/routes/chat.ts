@@ -8,7 +8,7 @@
 import type express from "express";
 import { validateChatRequest } from "../utils/validation";
 import { createLogger } from "../utils/logger";
-import { getUserFriendlyErrorMessage } from "../utils/errors";
+import { getUserFriendlyErrorMessage, OllamaError, ParseError } from "../utils/errors";
 import {
   handleNonStreaming,
   handleStreaming,
@@ -20,6 +20,7 @@ const logger = createLogger("ChatRoute");
 export async function handleChat(
   req: express.Request,
   res: express.Response,
+  next: express.NextFunction,
 ): Promise<void> {
   try {
     const { text, conversationId, history, persona, stream } = validateChatRequest(req.body as Record<string, unknown>);
@@ -73,17 +74,19 @@ export async function handleChat(
 
     res.json(chatResponse);
   } catch (error: unknown) {
-    logger.error("Chat error", error);
+    // Model-level failures (Ollama down, parse errors) → graceful 200 fallback
+    if (error instanceof OllamaError || error instanceof ParseError) {
+      logger.error("Chat model error", error);
+      const errorMessage = getUserFriendlyErrorMessage(error);
+      res.status(200).json({
+        replyText: errorMessage,
+        mapAction: { type: "none" },
+        searchSources: [],
+      } satisfies ChatResponse);
+      return;
+    }
 
-    const errorMessage = getUserFriendlyErrorMessage(error);
-    const fallbackResponse: ChatResponse = {
-      replyText: errorMessage,
-      mapAction: { type: "none" },
-      searchSources: [],
-    };
-
-    // Graceful degradation: return 200 with a friendly fallback so the
-    // client never sees a hard 5xx for model-level failures.
-    res.status(200).json(fallbackResponse);
+    // Infrastructure errors (validation, config, DB, unexpected) → global error handler
+    next(error);
   }
 }

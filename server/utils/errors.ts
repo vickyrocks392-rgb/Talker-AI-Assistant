@@ -70,6 +70,16 @@ export class ParseError extends AppError {
 }
 
 /**
+ * Resource not found (HTTP 404).
+ */
+export class NotFoundError extends AppError {
+  constructor(message: string) {
+    super(message, 404, "NOT_FOUND");
+    this.name = "NotFoundError";
+  }
+}
+
+/**
  * Configuration or validation error at startup.
  */
 export class ConfigError extends AppError {
