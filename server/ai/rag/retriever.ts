@@ -74,25 +74,20 @@ export class RagRetriever implements Retriever {
    * @returns Array of search results, ordered by relevance (highest score first).
    */
   async retrieve(query: string): Promise<SearchResult[]> {
-    logger.info(`[TRACE 4] Retriever.retrieve() called with query="${query.slice(0, 80)}...", k=${this.config.k}, scoreThreshold=${this.config.scoreThreshold}`);
     logger.debug(`Retrieving for query: "${query.slice(0, 80)}..."`);
 
     // Step 1: Embed the query
     const queryVector = await this.embeddings.embedQuery(query);
 
     logger.debug(`Query embedded: ${queryVector.length} dimensions`);
-    logger.info(`[TRACE 4.1] Query embedded successfully: ${queryVector.length} dimensions`);
 
     // Step 2: Search the vector store
-    logger.info(`[TRACE 5] Calling vectorStore.similaritySearch() with k=${this.config.k}`);
     const results = await this.vectorStore.similaritySearch(query, this.config.k);
-    logger.info(`[TRACE 5.1] similaritySearch returned ${results.length} results`);
 
     // Step 3: Filter by score threshold
     const filtered = results.filter(
       (result) => result.score >= this.config.scoreThreshold,
     );
-    logger.info(`[TRACE 5.2] After filtering by scoreThreshold=${this.config.scoreThreshold}: ${filtered.length} results`);
 
     // Step 4: Sort by score descending (most relevant first)
     const sorted = filtered.sort((a, b) => b.score - a.score);
@@ -103,19 +98,6 @@ export class RagRetriever implements Retriever {
     logger.debug(
       `Retrieved ${results.length} results, ${topK.length} passed threshold ${this.config.scoreThreshold}`,
     );
-    logger.info(`[TRACE 5.3] Final result count after sorting and limiting to k=${this.config.k}: ${topK.length}`);
-    
-    // DETAILED TRACE LOGGING
-    if (topK.length > 0) {
-      logger.info(`[TRACE 5.3.1] Returning ${topK.length} results to RagService:`);
-      topK.forEach((result, index) => {
-        const docId = result.document.metadata?.documentId || 'NO_ID';
-        const preview = result.document.pageContent.slice(0, 100);
-        logger.info(`[TRACE 5.3.2] Result ${index + 1}: ID=${docId}, score=${(result.score * 100).toFixed(1)}%, preview="${preview}..."`);
-      });
-    } else {
-      logger.info(`[TRACE 5.3.1] No results passed threshold - returning empty array`);
-    }
 
     return topK;
   }

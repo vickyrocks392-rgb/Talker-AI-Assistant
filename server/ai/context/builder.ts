@@ -97,13 +97,10 @@ export class ContextBuilder {
 
     // ── 3. RAG Context (conditional) ──────────────────────────────
     const shouldUseRag = executionPlan ? executionPlan.useRag : true;
-    logger.info(`[TRACE 6] ContextBuilder: shouldUseRag=${shouldUseRag} (from executionPlan.useRag=${executionPlan?.useRag ?? 'undefined (default true)'})`);
     
     const ragResult = shouldUseRag
       ? await this.retrieveRagContext(text)
       : null;
-    
-    logger.info(`[TRACE 7] ContextBuilder: ragResult=${ragResult ? `FOUND (${ragResult.chunkCount} chunks, avg score: ${ragResult.avgScore.toFixed(3)})` : 'NULL (no RAG context)'}`);
 
     // ── 4. Tool Context (conditional) ─────────────────────────────
     const shouldUseTools = executionPlan ? executionPlan.useTools : true;
@@ -232,13 +229,10 @@ export class ContextBuilder {
     text: string,
   ): Promise<{ context: string; chunkCount: number; avgScore: number } | null> {
     try {
-      logger.info(`[TRACE 8] ContextBuilder.retrieveRagContext() calling ragService.retrieveContext() with query="${text.slice(0, 80)}..."`);
-      
       const ragContext = await ragService.retrieveContext(text);
 
       if (!ragContext) {
         logger.debug("No RAG context retrieved");
-        logger.info(`[TRACE 9] ragService.retrieveContext() returned NULL`);
         return null;
       }
 
@@ -246,13 +240,10 @@ export class ContextBuilder {
         `Retrieved RAG context: ${ragContext.chunkCount} chunks ` +
         `(avg score: ${ragContext.avgScore.toFixed(3)})`,
       );
-      
-      logger.info(`[TRACE 9] ragService.retrieveContext() returned ${ragContext.chunkCount} chunks with avg score ${ragContext.avgScore.toFixed(3)}`);
 
       return ragContext;
     } catch (error) {
       logger.error("RAG context retrieval failed", error);
-      logger.info(`[TRACE ERROR] RAG context retrieval failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return null;
     }
   }

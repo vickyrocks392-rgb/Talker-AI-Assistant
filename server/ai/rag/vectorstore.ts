@@ -114,39 +114,11 @@ export class RagVectorStore implements VectorStore {
    */
   async addDocuments(documents: RagDocument[]): Promise<void> {
     logger.debug(`Adding ${documents.length} documents to vector store`);
-    logger.info(`[INSTRUMENT] addDocuments called with collection="${this.config.collectionName}" host="${this.config.host}" port="${this.config.port}" dimensions="${this.config.dimensions}"`);
 
     const store = await this.getStore();
-    
-    // Log the actual store configuration
-    logger.info(`[INSTRUMENT] Chroma store instance URL: http://${this.config.host}:${this.config.port}`);
-    logger.info(`[INSTRUMENT] Chroma collection name: ${this.config.collectionName}`);
-    
-    // Get document count before adding
-    let countBefore = 0;
-    try {
-      const collection = await store.ensureCollection();
-      countBefore = await collection.count();
-      logger.info(`[INSTRUMENT] Document count BEFORE adding: ${countBefore}`);
-    } catch (e) {
-      logger.debug(`[INSTRUMENT] Could not get count before: ${e}`);
-    }
-    
     await store.addDocuments(documents);
 
     logger.debug(`Successfully added ${documents.length} documents`);
-    
-    // Get document count after adding
-    try {
-      const collection = await store.ensureCollection();
-      const countAfter = await collection.count();
-      logger.info(`[INSTRUMENT] Document count AFTER adding: ${countAfter}`);
-      logger.info(`[INSTRUMENT] Documents added in this batch: ${countAfter - countBefore}`);
-    } catch (e) {
-      logger.debug(`[INSTRUMENT] Could not get count after: ${e}`);
-    }
-    
-    logger.info(`[INSTRUMENT] addDocuments completed for ${documents.length} documents`);
   }
 
   /**
@@ -157,49 +129,14 @@ export class RagVectorStore implements VectorStore {
    * @returns Array of search results with documents and similarity scores.
    */
   async similaritySearch(query: string, k: number = 4): Promise<SearchResult[]> {
-    logger.info(`[TRACE 5.4] similaritySearch() called with query="${query.slice(0, 80)}...", k=${k}`);
-    logger.info(`[TRACE 5.4.0] SEARCH DETAILS: collection="${this.config.collectionName}", url="http://${this.config.host}:${this.config.port}"`);
-    logger.info(`[INSTRUMENT] similaritySearch called with collection="${this.config.collectionName}" host="${this.config.host}" port="${this.config.port}" dimensions="${this.config.dimensions}"`);
+    // similaritySearch called
 
     const store = await this.getStore();
-
-    // Log the actual store configuration
-    logger.info(`[INSTRUMENT] Chroma store instance URL: http://${this.config.host}:${this.config.port}`);
-    logger.info(`[INSTRUMENT] Chroma collection name: ${this.config.collectionName}`);
-
-    // Get document count before search
-    let countBefore = 0;
-    try {
-      const collection = await store.ensureCollection();
-      countBefore = await collection.count();
-      logger.info(`[TRACE 5.4.1] Total documents in collection BEFORE search: ${countBefore}`);
-      
-      // CRITICAL: If documents exist, list them all
-      if (countBefore > 0) {
-        try {
-          const allDocs = await collection.get();
-          if (allDocs && allDocs.ids && allDocs.ids.length > 0) {
-            logger.warn(`[TRACE 5.4.1.5] CRITICAL: Collection has ${allDocs.ids.length} documents. Listing ALL documents in collection:`);
-            allDocs.ids.forEach((id: string, idx: number) => {
-              const metadata = allDocs.metadatas?.[idx] || {};
-              const docContent = allDocs.documents?.[idx] || 'NO_CONTENT';
-              const preview = docContent.slice(0, 100);
-              logger.warn(`[TRACE 5.4.1.6] Document ${idx + 1}/${allDocs.ids.length}: ID="${id}", metadata=${JSON.stringify(metadata)}, preview="${preview}..."`);
-            });
-          }
-        } catch (e) {
-          logger.debug(`[TRACE 5.4.1.5] Could not list all documents: ${e}`);
-        }
-      }
-    } catch (e) {
-      logger.debug(`[TRACE 5.4.1] Could not get count before search: ${e}`);
-    }
 
     // Chroma's similaritySearchWithScore returns [Document, number][] where
     // the score is a distance (lower = more similar). We normalise it to a
     // similarity score (higher = more similar) using: similarity = 1 / (1 + distance)
     const results = await store.similaritySearchWithScore(query, k);
-    logger.info(`[TRACE 5.5] Chroma similaritySearchWithScore returned ${results.length} raw results`);
 
     const searchResults: SearchResult[] = results.map(([doc, distance]) => ({
       document: doc as RagDocument,
@@ -207,25 +144,6 @@ export class RagVectorStore implements VectorStore {
     }));
 
     logger.debug(`Found ${searchResults.length} results`);
-    logger.info(`[INSTRUMENT] similaritySearch returned ${searchResults.length} results`);
-    logger.info(`[TRACE 5.6] After score normalization, returning ${searchResults.length} results`);
-    
-    // DETAILED TRACE LOGGING
-    logger.info(`[TRACE 5.7] Querying Chroma collection: "${this.config.collectionName}" at http://${this.config.host}:${this.config.port}`);
-    logger.info(`[TRACE 5.8] Raw Chroma results: ${results.length} documents out of ${countBefore} total`);
-    
-    if (results.length > 0) {
-      logger.warn(`[TRACE 5.8.5] CRITICAL: Retrieved ${results.length} documents from collection with ${countBefore} total documents:`);
-      results.forEach(([doc, distance], index) => {
-        const docId = (doc as any).metadata?.documentId || 'NO_ID';
-        const metadata = (doc as any).metadata || {};
-        const chunkPreview = ((doc as any).pageContent || '').slice(0, 100);
-        const scorePercent = (1 / (1 + distance) * 100).toFixed(1);
-        logger.warn(`[TRACE 5.9] Result ${index + 1}/${results.length}: ID="${docId}", distance=${distance.toFixed(4)}, score=${scorePercent}%, metadata=${JSON.stringify(metadata)}, preview="${chunkPreview}..."`);
-      });
-    } else {
-      logger.info(`[TRACE 5.8.5] No documents retrieved from collection (collection has ${countBefore} documents)`);
-    }
 
     return searchResults;
   }
@@ -235,99 +153,28 @@ export class RagVectorStore implements VectorStore {
    * This resets the collection entirely.
    */
   async deleteAll(): Promise<void> {
-    logger.info(`[TRACE 17] RagVectorStore.deleteAll() called on collection="${this.config.collectionName}"`);
-    logger.info(`[TRACE 17.0] RESET DETAILS: collection="${this.config.collectionName}", url="http://${this.config.host}:${this.config.port}"`);
     logger.debug(`Deleting all documents from collection: ${this.config.collectionName}`);
-    logger.info(`[INSTRUMENT] deleteAll called with collection="${this.config.collectionName}"`);
 
     try {
-      // Get the current store instance
       const chromaStore = await this.getStore();
-      
-      // Access the underlying Chroma collection using the official API
       const collection = await chromaStore.ensureCollection();
       
-      // Get document count before deletion
-      const countBefore = await collection.count();
-      logger.info(`[INSTRUMENT] Documents in collection BEFORE delete: ${countBefore}`);
-      logger.info(`[TRACE 17.1] Document count BEFORE reset: ${countBefore}`);
-      
-      // CRITICAL: Log all documents that exist before deletion
-      if (countBefore > 0) {
-        try {
-          const allDocs = await collection.get();
-          if (allDocs && allDocs.ids && allDocs.ids.length > 0) {
-            logger.info(`[TRACE 17.1.5] CRITICAL: Listing all ${allDocs.ids.length} documents BEFORE deletion:`);
-            allDocs.ids.forEach((id: string, idx: number) => {
-              const metadata = allDocs.metadatas?.[idx] || {};
-              const preview = allDocs.documents?.[idx]?.slice(0, 100) || 'NO_CONTENT';
-              logger.info(`[TRACE 17.1.6] Document ${idx + 1}: ID="${id}", metadata=${JSON.stringify(metadata)}, preview="${preview}..."`);
-            });
-          }
-        } catch (e) {
-          logger.debug(`[TRACE 17.1.5] Could not list documents before deletion: ${e}`);
-        }
-      }
-      
       // Delete the collection entirely using ChromaClient's official deleteCollection API
-      // The Chroma wrapper exposes the client via the 'index' property
       const client = chromaStore.index;
-      let deleteMethod = 'unknown';
       if (client && typeof client.deleteCollection === 'function') {
         await client.deleteCollection({ name: this.config.collectionName });
-        deleteMethod = 'deleteCollection';
-        logger.info(`[INSTRUMENT] Deleted Chroma collection: ${this.config.collectionName}`);
-        logger.info(`[TRACE 17.2] Deleted Chroma collection using deleteCollection(): ${this.config.collectionName}`);
+        logger.info(`Deleted Chroma collection: ${this.config.collectionName}`);
       } else {
         // Fallback: delete all documents using the LangChain wrapper's delete method
         await chromaStore.delete({ filter: { $ne: null } });
-        deleteMethod = 'store.delete({ filter: { $ne: null } })';
-        logger.info(`[INSTRUMENT] Deleted all documents from collection using LangChain delete API`);
-        logger.info(`[TRACE 17.2] Deleted all documents using LangChain delete API`);
+        logger.info(`Deleted all documents from collection using LangChain delete API`);
       }
-      logger.info(`[TRACE 17.2.5] Delete method used: ${deleteMethod}`);
-      
-      // Verify deletion - need to get a fresh collection reference after deletion
-      const countAfter = await chromaStore.ensureCollection().then(c => c.count()).catch(() => 0);
-      logger.info(`[INSTRUMENT] Documents in collection AFTER delete: ${countAfter}`);
-      logger.info(`[TRACE 17.3] Document count AFTER reset: ${countAfter}`);
-      
-      if (countAfter > 0) {
-        logger.warn(`[INSTRUMENT] Collection still has ${countAfter} documents after delete!`);
-        logger.warn(`[TRACE 17.4] WARNING: Collection still has ${countAfter} documents after reset!`);
-        
-        // CRITICAL: List the documents that still exist
-        try {
-          const remainingDocs = await chromaStore.ensureCollection().then(c => c.get());
-          if (remainingDocs && remainingDocs.ids && remainingDocs.ids.length > 0) {
-            logger.warn(`[TRACE 17.4.5] CRITICAL: Listing all ${remainingDocs.ids.length} REMAINING documents after deletion:`);
-            remainingDocs.ids.forEach((id: string, idx: number) => {
-              const metadata = remainingDocs.metadatas?.[idx] || {};
-              const preview = remainingDocs.documents?.[idx]?.slice(0, 100) || 'NO_CONTENT';
-              logger.warn(`[TRACE 17.4.6] REMAINING Document ${idx + 1}: ID="${id}", metadata=${JSON.stringify(metadata)}, preview="${preview}..."`);
-            });
-          }
-        } catch (e) {
-          logger.debug(`[TRACE 17.4.5] Could not list remaining documents: ${e}`);
-        }
-      } else {
-        logger.info(`[TRACE 17.4] SUCCESS: Collection is now empty (count=0)`);
-      }
-      
-      // Check if a new collection was created
-      logger.info(`[TRACE 17.4.7] Checking if new collection was created...`);
-      const countFinal = await chromaStore.ensureCollection().then(c => c.count()).catch(() => 0);
-      logger.info(`[TRACE 17.4.8] Final verification count: ${countFinal}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.error(`[INSTRUMENT] Failed to delete collection: ${errorMessage}`);
-      logger.info(`[TRACE ERROR] Failed to delete collection: ${errorMessage}`);
+      logger.error(`Failed to delete collection: ${errorMessage}`);
       throw error;
     } finally {
-      // Nullify the store to force reinitialization
       this.store = null;
-      logger.debug(`[INSTRUMENT] Store reference nullified`);
-      logger.info(`[TRACE 17.5] Store reference nullified, will reinitialize on next access`);
     }
   }
 }

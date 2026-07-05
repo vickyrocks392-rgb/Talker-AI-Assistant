@@ -349,11 +349,6 @@ export class PolicyEngine {
             `memory=${plan.useMemory}, rag=${plan.useRag}, tools=${plan.useTools}`,
           );
 
-          // TRACE LOGGING: Policy decision
-          logger.info(`[TRACE 1] PolicyEngine.evaluate() called with input="${trimmed.slice(0, 80)}..."`);
-          logger.info(`[TRACE 2] Rule "${rule.name}" matched: mode=${plan.mode}, useRag=${plan.useRag}, useMemory=${plan.useMemory}, useTools=${plan.useTools}`);
-          logger.info(`[TRACE 3] Policy decision: RAG will ${plan.useRag ? 'BE USED' : 'NOT BE USED'} for this request`);
-
           return plan;
         }
       } catch (error) {
@@ -364,11 +359,7 @@ export class PolicyEngine {
 
     // No rule matched — return default
     logger.debug("No rule matched — using default plan");
-    const defaultPlan = { ...DEFAULT_PLAN };
-    logger.info(`[TRACE 1] PolicyEngine.evaluate() called with input="${trimmed.slice(0, 80)}..."`);
-    logger.info(`[TRACE 2] No rule matched: mode=${defaultPlan.mode}, useRag=${defaultPlan.useRag}, useMemory=${defaultPlan.useMemory}, useTools=${defaultPlan.useTools}`);
-    logger.info(`[TRACE 3] Policy decision: RAG will ${defaultPlan.useRag ? 'BE USED' : 'NOT BE USED'} for this request (default plan)`);
-    return defaultPlan;
+    return { ...DEFAULT_PLAN };
   }
 
   /**

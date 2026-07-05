@@ -145,15 +145,11 @@ router.post(
       const embeddings = new RagEmbeddings();
       const vectorStore = new RagVectorStore(embeddings);
 
-      logger.info(`[INSTRUMENT] Indexing route: embeddings instance created, vectorStore instance created`);
-      logger.info(`[INSTRUMENT] About to add ${totalChunks} documents to collection`);
-
       await vectorStore.addDocuments(indexedChunks);
 
       logger.info(
         `Indexed ${totalChunks} chunks for document ${documentId} in ChromaDB`,
       );
-      logger.info(`[INSTRUMENT] Indexing complete for document ${documentId}`);
 
       // ── Step 5: Return indexing statistics ────────────────────────
       res.status(201).json({
@@ -202,23 +198,17 @@ router.post(
           throw new ValidationError("Query must be a non‑empty string", "query");
         }
   
-        logger.info(`[TRACE 1] Request received: query="${query.slice(0, 80)}...", k=${k}`);
-        logger.info(`[TRACE 2] Query text extracted successfully`);
+        logger.info(`Search request received: query="${query.slice(0, 80)}...", k=${k}`);
   
          // Initialize retriever (reuse existing components)
          const embeddings = new RagEmbeddings();
          const vectorStore = new RagVectorStore(embeddings);
          const retriever = new RagRetriever(embeddings, vectorStore);
-         
-         logger.info(`[INSTRUMENT] Search route: embeddings instance created, vectorStore instance created`);
-         logger.info(`[TRACE 3] RagService components initialized (embeddings, vectorStore, retriever)`);
-         logger.info(`[INSTRUMENT] About to search with query: "${query.slice(0, 80)}..."`);
    
          // Perform retrieval
          const docs = await retriever.retrieve(query);
          
-         logger.info(`[INSTRUMENT] Search complete, retrieved ${docs.length} documents`);
-         logger.info(`[TRACE 6] Retriever returned ${docs.length} documents`);
+         logger.info(`Search complete, retrieved ${docs.length} documents`);
   
         // Map to response format
         const results = docs.map((doc) => ({
@@ -232,10 +222,10 @@ router.post(
           },
         }));
   
-        logger.info(`[TRACE 7] Route returning ${results.length} results`);
+        logger.info(`Route returning ${results.length} results`);
         res.json({ results });
       } catch (error) {
-        logger.error(`[TRACE ERROR] Error in search route: ${error}`);
+        logger.error(`Error in search route: ${error}`);
         next(error);
       }
     },
@@ -252,31 +242,14 @@ router.post(
   router.post("/rag/reset", async (_req, res, next) => {
     try {
       logger.info("Resetting RAG collection...");
-      logger.info(`[TRACE 18] /api/rag/reset endpoint called`);
 
       // Reuse existing RAG service
       const { ragService } = await import("../ai/rag/service");
-      
-      logger.info(`[TRACE 18.1] ragService imported, calling reset()`);
       
       // Reset the service (clears Chroma collection and internal state)
       await ragService.reset();
 
       logger.info("RAG collection reset successfully");
-      logger.info(`[TRACE 18.2] Reset complete, sending response to client`);
-      
-      // TRACE 19: Verify collection is empty after reset
-      try {
-        const { RagVectorStore } = await import("../ai/rag/vectorstore");
-        const { RagEmbeddings } = await import("../ai/rag/embeddings");
-        const embeddings = new RagEmbeddings();
-        const verifyStore = new RagVectorStore(embeddings);
-        const countAfterReset = await verifyStore.getDocumentCount();
-        logger.info(`[TRACE 19] Collection count AFTER /api/rag/reset: ${countAfterReset} (should be 0)`);
-        logger.info(`[TRACE 19.1] Verified collection "${verifyStore["config"].collectionName}" at http://${verifyStore["config"].host}:${verifyStore["config"].port}`);
-      } catch (e) {
-        logger.debug(`[TRACE 19] Could not verify collection count after reset: ${e}`);
-      }
       
       res.status(200).json({
         success: true,
@@ -284,7 +257,6 @@ router.post(
       });
     } catch (error) {
       logger.error("Failed to reset RAG collection", error);
-      logger.info(`[TRACE ERROR] Reset failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       next(error);
     }
   });
