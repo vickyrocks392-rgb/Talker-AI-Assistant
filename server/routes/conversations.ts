@@ -9,26 +9,11 @@ import { Router } from "express";
 import { memoryService } from "../memory/service";
 import { createLogger } from "../utils/logger";
 import { ValidationError, NotFoundError } from "../utils/errors";
+import { assertString } from "../utils/validation";
 import type { Conversation } from "../memory/types";
 
 const logger = createLogger("ConversationsRoute");
 const router = Router();
-
-// ── Helpers ───────────────────────────────────────────────────────────
-
-/**
- * Assert that `value` is a non-empty string and return it trimmed.
- * Throws ValidationError (HTTP 400) otherwise.
- */
-function assertString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new ValidationError(
-      `"${field}" is required and must be a non-empty string.`,
-      field,
-    );
-  }
-  return value.trim();
-}
 
 /**
  * Assert that `value` is a string (possibly empty) and return it trimmed.

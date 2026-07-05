@@ -84,6 +84,22 @@ app.use(globalErrorHandler);
 
 // ── Startup ─────────────────────────────────────────────────────────
 
+/**
+ * Check a dependency and log the result.
+ * Preserves the existing startup output format.
+ */
+async function checkDependency(
+  name: string,
+  checkFn: () => Promise<void>,
+): Promise<void> {
+  try {
+    await checkFn();
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    logger.warn(`  ✗ ${name}: ${errorMessage}`);
+  }
+}
+
 async function start() {
   try {
     // ── Environment ─────────────────────────────────────────────────
@@ -120,17 +136,14 @@ async function start() {
     logger.info(`  ✓ Tool Engine (${registry.list().length} tools)`);
 
     // Check SQLite
-    try {
+    await checkDependency("SQLite", async () => {
       const db = getDatabase();
       db.prepare("SELECT 1").get();
       logger.info("  ✓ SQLite");
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.warn(`  ✗ SQLite: ${errorMessage}`);
-    }
+    });
 
     // Check Ollama connectivity
-    try {
+    await checkDependency("Ollama", async () => {
       if (config.aiProvider === "ollama") {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 3000);
@@ -146,13 +159,10 @@ async function start() {
       } else {
         logger.info("  ✓ Groq (API key configured)");
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.warn(`  ✗ Ollama: ${errorMessage}`);
-    }
+    });
 
     // Check ChromaDB
-    try {
+    await checkDependency("ChromaDB", async () => {
       const { ragService } = await import("./server/ai/rag/service");
       const isAvailable = await ragService.isAvailable();
       if (!isAvailable) {
@@ -165,13 +175,10 @@ async function start() {
       } else {
         logger.warn("  ✗ ChromaDB (unavailable)");
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.warn(`  ✗ ChromaDB: ${errorMessage}`);
-    }
+    });
 
     // Check RAG Collection
-    try {
+    await checkDependency("RAG Collection", async () => {
       const { ragService } = await import("./server/ai/rag/service");
       const context = await ragService.retrieveContext("startup check");
       
@@ -185,10 +192,7 @@ async function start() {
       } else {
         logger.warn("  ✗ RAG Collection (unavailable)");
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.warn(`  ✗ RAG Collection: ${errorMessage}`);
-    }
+    });
 
     logger.info("");
     logger.info("Server Ready");

@@ -17,7 +17,7 @@ interface TTSRequest {
  * Assert that `value` is a non-empty string and return it.
  * Throws `ValidationError` otherwise.
  */
-function assertString(value: unknown, field: string): string {
+export function assertString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new ValidationError(
       `"${field}" is required and must be a non-empty string.`,

@@ -48,7 +48,6 @@ class RagService {
   private initialized = false;
   private initError: Error | null = null;
   private lastHealthCheck: boolean | null = null;
-  private healthCheckInProgress = false;
 
   /**
    * Lazily initialise the RAG pipeline components.

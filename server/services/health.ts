@@ -35,6 +35,25 @@ export interface HealthReport {
 }
 
 /**
+ * Execute a health check with standardized error handling.
+ * Logs success at DEBUG level and failures at WARN level.
+ */
+async function runHealthCheck<T>(
+  name: string,
+  checkFn: () => Promise<T>,
+): Promise<T | null> {
+  try {
+    const result = await checkFn();
+    logger.debug(`${name} health check passed`);
+    return result;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    logger.warn(`${name} health check failed: ${errorMessage}`);
+    return null;
+  }
+}
+
+/**
  * Perform lightweight health checks on all system dependencies.
  *
  * Each check is independent and failures are logged but do not prevent
@@ -52,36 +71,28 @@ export async function getHealth(): Promise<HealthReport> {
   };
 
   // ── SQLite Check ────────────────────────────────────────────────────
-  try {
+  const sqliteResult = await runHealthCheck("SQLite", async () => {
     const db = getDatabase();
     // Lightweight query to verify database is operational
     const result = db.prepare("SELECT 1").get() as { "1": number };
     if (result && result["1"] === 1) {
       report.sqlite = true;
-      logger.debug("SQLite health check passed");
     } else {
       logger.warn("SQLite health check returned unexpected result");
     }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    logger.warn(`SQLite health check failed: ${errorMessage}`);
-  }
+  });
 
   // ── Ollama Check ────────────────────────────────────────────────────
-  try {
+  const ollamaResult = await runHealthCheck("Ollama", async () => {
     const provider = getAIProvider();
     // Reuse existing provider connectivity check
     // The provider's health is verified by attempting to access it
     // We don't make a network call here to keep it lightweight
     report.ollama = provider !== null;
-    logger.debug("Ollama health check passed (provider initialized)");
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    logger.warn(`Ollama health check failed: ${errorMessage}`);
-  }
+  });
 
   // ── ChromaDB Check ──────────────────────────────────────────────────
-  try {
+  const chromaResult = await runHealthCheck("ChromaDB", async () => {
     // Reuse existing RAG service to check ChromaDB connectivity
     // The RAG service initializes ChromaDB on first use
     const isAvailable = await ragService.isAvailable();
@@ -92,18 +103,13 @@ export async function getHealth(): Promise<HealthReport> {
       // If we get here without error, ChromaDB is reachable
       report.chromadb = true;
       report.ragReady = context !== null;
-      logger.debug("ChromaDB health check passed (service initialized)");
     } else {
       report.chromadb = true;
       // Check if collection has documents
       const context = await ragService.retrieveContext("health check");
       report.ragReady = context !== null;
-      logger.debug("ChromaDB health check passed (already initialized)");
     }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    logger.warn(`ChromaDB health check failed: ${errorMessage}`);
-  }
+  });
 
   // ── Backend Check ───────────────────────────────────────────────────
   // Backend is always true if this function is executing
