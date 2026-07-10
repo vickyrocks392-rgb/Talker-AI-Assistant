@@ -143,7 +143,7 @@ export interface VectorStore {
   /** Add documents with their embeddings to the store. */
   addDocuments(documents: RagDocument[]): Promise<void>;
   /** Search for documents similar to a query embedding. */
-  similaritySearch(query: string, k?: number): Promise<SearchResult[]>;
+  similaritySearch(query: string, k?: number, filter?: Record<string, unknown>): Promise<SearchResult[]>;
   /** Delete all documents from the store. */
   deleteAll(): Promise<void>;
 }
@@ -166,7 +166,7 @@ export interface RetrieverConfig {
  */
 export interface Retriever {
   /** Retrieve the top-k most relevant documents for a query. */
-  retrieve(query: string): Promise<SearchResult[]>;
+  retrieve(query: string, documentIds?: string[]): Promise<SearchResult[]>;
 }
 
 // ── Pipeline types ───────────────────────────────────────────────────

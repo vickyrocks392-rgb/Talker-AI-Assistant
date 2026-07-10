@@ -1,13 +1,17 @@
 /**
  * SQLite database singleton.
  *
- * Creates and manages a single Better-SQLite3 connection.
- * Tables are automatically created on first load.
+ * Opens a single Better-SQLite3 connection and runs the migration
+ * runner on startup to ensure the schema is up to date.
+ *
+ * All schema creation logic has been moved to individual migration
+ * files in the migrations/ directory.
  */
 
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
+import { runMigrations } from "./migration_runner";
 
 const STORAGE_DIR = path.join(process.cwd(), "storage");
 const DB_PATH = path.join(STORAGE_DIR, "talker.db");
@@ -24,39 +28,8 @@ function ensureStorageDir(): void {
 }
 
 /**
- * Creates the required tables if they do not already exist.
- */
-function createTables(database: Database.Database): void {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS conversations (
-      id         TEXT PRIMARY KEY,
-      title      TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS messages (
-      id               TEXT PRIMARY KEY,
-      conversation_id  TEXT NOT NULL,
-      role             TEXT NOT NULL,
-      content          TEXT NOT NULL,
-      created_at       TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_messages_conversation_id
-      ON messages (conversation_id);
-
-    CREATE INDEX IF NOT EXISTS idx_messages_created_at
-      ON messages (created_at);
-
-    CREATE INDEX IF NOT EXISTS idx_conversations_updated_at
-      ON conversations (updated_at);
-  `);
-}
-
-/**
  * Returns the singleton database instance.
- * Creates the database and tables on the first call.
+ * Creates the database and runs pending migrations on the first call.
  */
 export function getDatabase(): Database.Database {
   if (db) {
@@ -70,7 +43,8 @@ export function getDatabase(): Database.Database {
   // Enable WAL mode for better concurrent read performance
   db.pragma("journal_mode = WAL");
 
-  createTables(db);
+  // Run pending migrations to bring schema up to date
+  runMigrations(db);
 
   return db;
 }

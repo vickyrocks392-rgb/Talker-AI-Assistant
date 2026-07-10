@@ -1,4 +1,5 @@
 import React from "react";
+import { Copy } from "lucide-react";
 
 interface CodeBlock {
   type: "code";
@@ -148,7 +149,7 @@ function renderInline(text: string): React.ReactNode[] {
       partIdx++;
     }
     parts.push(
-      <code key={`code-${partIdx}`} className="bg-zinc-900 border border-zinc-800 text-red-400 px-1.5 py-0.5 rounded font-mono text-[11px] mx-0.5">
+      <code key={`code-${partIdx}`} className="bg-gray-100 border border-gray-200 text-red-600 px-1.5 py-0.5 rounded font-mono text-[11px] mx-0.5">
         {match[1]}
       </code>
     );
@@ -171,40 +172,47 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
   const blocks = parseMarkdown(content);
 
   return (
-    <div className="markdown-body space-y-3 text-zinc-200">
+    <div className="markdown-body space-y-4 text-gray-800">
       {blocks.map((block, idx) => {
         switch (block.type) {
           case "code":
             return (
-              <div key={idx} className="my-3 rounded-lg overflow-hidden border border-zinc-800 bg-zinc-950 font-mono text-xs">
+              <div key={idx} className="my-4 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 font-mono text-xs">
                 {block.language && (
-                  <div className="bg-zinc-900 border-b border-zinc-850 px-4 py-1.5 text-[10px] text-zinc-400 flex items-center justify-between select-none font-sans">
-                    <span className="uppercase font-bold tracking-wider">{block.language}</span>
+                  <div className="bg-white border-b border-gray-200 px-4 py-2 text-xs text-gray-600 flex items-center justify-between select-none font-sans">
+                    <span className="uppercase font-semibold tracking-wider text-gray-700">{block.language}</span>
+                    <button 
+                      onClick={() => navigator.clipboard.writeText(block.code)}
+                      className="text-gray-500 hover:text-gray-700 transition"
+                      title="Copy code"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
-                <pre className="p-4 overflow-x-auto text-zinc-300 whitespace-pre">
+                <pre className="p-4 overflow-x-auto text-gray-800 whitespace-pre">
                   <code>{block.code}</code>
                 </pre>
               </div>
             );
           case "table":
             return (
-              <div key={idx} className="my-3 overflow-x-auto rounded-lg border border-zinc-900 bg-zinc-950/40">
-                <table className="min-w-full divide-y divide-zinc-800 text-left text-xs">
-                  <thead className="bg-zinc-900/80">
+              <div key={idx} className="my-4 overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
+                  <thead className="bg-gray-50">
                     <tr>
                       {block.headers.map((header, hIdx) => (
-                        <th key={hIdx} className="px-4 py-2 font-bold text-zinc-300 font-sans">
+                        <th key={hIdx} className="px-4 py-2 font-semibold text-gray-700 font-sans">
                           {renderInline(header)}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-850">
+                  <tbody className="divide-y divide-gray-100">
                     {block.rows.map((row, rIdx) => (
-                      <tr key={rIdx} className="hover:bg-zinc-900/30">
+                      <tr key={rIdx} className="hover:bg-gray-50/50">
                         {row.map((cell, cIdx) => (
-                          <td key={cIdx} className="px-4 py-2 text-zinc-300 font-sans">
+                          <td key={cIdx} className="px-4 py-2 text-gray-800 font-sans">
                             {renderInline(cell)}
                           </td>
                         ))}
@@ -217,9 +225,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
           case "list":
             const ListTag = block.ordered ? "ol" : "ul";
             return (
-              <ListTag key={idx} className={`list-outside pl-5 space-y-1.5 text-xs text-zinc-300 font-sans ${block.ordered ? "list-decimal" : "list-disc"}`}>
+              <ListTag key={idx} className={`list-outside pl-6 space-y-2 text-sm text-gray-800 font-sans ${block.ordered ? "list-decimal" : "list-disc"}`}>
                 {block.items.map((item, iIdx) => (
-                  <li key={iIdx}>
+                  <li key={iIdx} className="leading-relaxed">
                     {renderInline(item)}
                   </li>
                 ))}
@@ -227,7 +235,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
             );
           case "paragraph":
             return (
-              <p key={idx} className="text-zinc-100 font-sans font-medium text-xs leading-relaxed whitespace-pre-wrap">
+              <p key={idx} className="text-gray-800 font-sans text-sm leading-relaxed whitespace-pre-wrap">
                 {renderInline(block.text)}
               </p>
             );

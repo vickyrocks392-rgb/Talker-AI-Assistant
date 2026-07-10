@@ -10,7 +10,10 @@
     "dev:all": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "migrate": "tsx server/db/migrate.ts",
+    "migrate:status": "tsx server/db/migrate.ts status",
+    "migrate:reset": "tsx server/db/migrate.ts reset"
   },
   "dependencies": {
     "@langchain/community": "^1.1.29",

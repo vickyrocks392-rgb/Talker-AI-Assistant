@@ -12,6 +12,7 @@
 import type { OllamaMessage } from "../types";
 import type { Persona, ConversationMessage } from "../types";
 import type { ExecutionPlan } from "../orchestrator/types";
+import type { ChatAttachment } from "../../../shared/types";
 
 // ── Priority levels for token budgeting ─────────────────────────────
 

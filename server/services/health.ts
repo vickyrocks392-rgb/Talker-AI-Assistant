@@ -9,11 +9,12 @@
  * - RAG collection readiness
  *
  * All checks are non-blocking and fail gracefully to support partial outages.
+ * Health state is never cached — every call performs fresh dynamic checks.
  */
 
 import { createLogger } from "../utils/logger";
 import { getDatabase } from "../db/database";
-import { getAIProvider } from "../ai/provider";
+import { getConfig } from "../config/env";
 import { ragService } from "../ai/rag/service";
 
 const logger = createLogger("HealthService");
@@ -54,10 +55,36 @@ async function runHealthCheck<T>(
 }
 
 /**
+ * Check if Ollama is reachable by calling its /api/tags endpoint.
+ * This is a lightweight check that only verifies the server is running,
+ * without loading any models or performing inference.
+ */
+async function checkOllamaReachable(): Promise<boolean> {
+  const config = getConfig();
+  const baseUrl = config.ollama.baseUrl;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2_000);
+
+    const response = await fetch(`${baseUrl}/api/tags`, {
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Perform lightweight health checks on all system dependencies.
  *
  * Each check is independent and failures are logged but do not prevent
  * other checks from running. This ensures partial outages are diagnosable.
+ *
+ * All checks are performed dynamically on every call — no state is cached.
  *
  * @returns HealthReport with boolean status for each dependency
  */
@@ -71,7 +98,7 @@ export async function getHealth(): Promise<HealthReport> {
   };
 
   // ── SQLite Check ────────────────────────────────────────────────────
-  const sqliteResult = await runHealthCheck("SQLite", async () => {
+  await runHealthCheck("SQLite", async () => {
     const db = getDatabase();
     // Lightweight query to verify database is operational
     const result = db.prepare("SELECT 1").get() as { "1": number };
@@ -83,33 +110,33 @@ export async function getHealth(): Promise<HealthReport> {
   });
 
   // ── Ollama Check ────────────────────────────────────────────────────
-  const ollamaResult = await runHealthCheck("Ollama", async () => {
-    const provider = getAIProvider();
-    // Reuse existing provider connectivity check
-    // The provider's health is verified by attempting to access it
-    // We don't make a network call here to keep it lightweight
-    report.ollama = provider !== null;
-  });
+  // Perform a real HTTP connectivity check against Ollama's /api/tags endpoint.
+  // This verifies the server is running without performing inference.
+  const ollamaReachable = await runHealthCheck("Ollama", checkOllamaReachable);
+  report.ollama = ollamaReachable === true;
 
   // ── ChromaDB Check ──────────────────────────────────────────────────
-  const chromaResult = await runHealthCheck("ChromaDB", async () => {
-    // Reuse existing RAG service to check ChromaDB connectivity
-    // The RAG service initializes ChromaDB on first use
-    const isAvailable = await ragService.isAvailable();
-    
-    if (!isAvailable) {
-      // Try to initialize the RAG service to verify ChromaDB connectivity
-      const context = await ragService.retrieveContext("health check");
-      // If we get here without error, ChromaDB is reachable
-      report.chromadb = true;
-      report.ragReady = context !== null;
-    } else {
-      report.chromadb = true;
-      // Check if collection has documents
-      const context = await ragService.retrieveContext("health check");
-      report.ragReady = context !== null;
-    }
+  // Use the RAG service's lightweight connectivity check.
+  // This verifies ChromaDB is reachable without performing semantic search.
+  const chromaAvailable = await runHealthCheck("ChromaDB", async () => {
+    return ragService.isAvailable();
   });
+  report.chromadb = chromaAvailable === true;
+
+  // ── RAG Readiness Check ─────────────────────────────────────────────
+  // ragReady is true when ALL of the following are true:
+  //   1. Ollama is reachable (needed for embeddings)
+  //   2. ChromaDB is reachable (needed for vector storage)
+  //   3. The retriever is initialized (pipeline components are ready)
+  //
+  // This check is lightweight — it does NOT perform any semantic retrieval.
+  // It only verifies connectivity and component initialization.
+  if (report.ollama && report.chromadb) {
+    const retrieverReady = await runHealthCheck("RAG Retriever", async () => {
+      return ragService.isRetrieverReady();
+    });
+    report.ragReady = retrieverReady === true;
+  }
 
   // ── Backend Check ───────────────────────────────────────────────────
   // Backend is always true if this function is executing

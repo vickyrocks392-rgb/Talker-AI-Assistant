@@ -52,6 +52,15 @@ export interface Conversation {
 }
 
 /**
+ * RAG context information for a message.
+ */
+export interface RagContext {
+  used: boolean;
+  documentsSearched: number;
+  contextType: "resume" | "document" | "none";
+}
+
+/**
  * A message as returned by the backend API.
  * Maps from the server's Message type.
  */
@@ -61,6 +70,7 @@ export interface Message {
   role: ConversationRole;
   content: string;
   createdAt: string;
+  ragContext?: RagContext;
 }
 
 // Global window extensions for Web Speech API standard interfaces

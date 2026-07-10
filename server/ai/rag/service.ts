@@ -5,6 +5,9 @@
  * relevant document chunks for a given query. The service is lazily
  * initialised and fails gracefully if the vector store is unavailable.
  *
+ * Supports attachment-scoped retrieval: when document IDs are provided,
+ * retrieval is restricted to chunks from those documents only.
+ *
  * Usage:
  * ```ts
  * const context = await ragService.retrieveContext("What is RAG?");
@@ -47,18 +50,16 @@ class RagService {
   private retriever: RagRetriever | null = null;
   private initialized = false;
   private initError: Error | null = null;
-  private lastHealthCheck: boolean | null = null;
 
   /**
    * Lazily initialise the RAG pipeline components.
    * Returns true if initialization succeeded, false otherwise.
+   * On failure, resets state so subsequent calls can retry.
    */
   private async initialize(): Promise<boolean> {
-    if (this.initialized) {
-      return this.retriever !== null;
+    if (this.initialized && this.retriever !== null) {
+      return true;
     }
-
-    this.initialized = true;
 
     try {
       logger.info("Initializing RAG service...");
@@ -78,15 +79,20 @@ class RagService {
       });
       logger.debug("RAG retriever initialized");
 
+      this.initialized = true;
+      this.initError = null;
+
       logger.info("RAG service initialized successfully");
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error(`Failed to initialize RAG service: ${errorMessage}`);
       this.initError = error instanceof Error ? error : new Error(String(error));
+      // Reset state so we can retry on next attempt
       this.embeddings = null;
       this.vectorStore = null;
       this.retriever = null;
+      this.initialized = false;
       return false;
     }
   }
@@ -143,6 +149,91 @@ class RagService {
   }
 
   /**
+   * Retrieve context scoped to specific attached documents.
+   *
+   * Uses Chroma metadata filtering to scope the vector search to only
+   * chunks from the specified documents, rather than retrieving globally
+   * and filtering afterwards.
+   *
+   * @param query - The user's query text.
+   * @param documentIds - Array of document IDs to scope retrieval to.
+   * @returns Formatted RAG context, or null if no relevant chunks found.
+   */
+  async retrieveContextForDocuments(
+    query: string,
+    documentIds: string[],
+  ): Promise<RagContext | null> {
+    if (documentIds.length === 0) {
+      return this.retrieveContext(query);
+    }
+
+    // Try to initialize if not already done
+    if (!this.retriever) {
+      const success = await this.initialize();
+      if (!success) {
+        logger.debug("Attachment-scoped RAG retrieval skipped: service not initialized");
+        return null;
+      }
+    }
+
+    if (!this.retriever) {
+      return null;
+    }
+
+    try {
+      logger.debug(`Query: ${query}`);
+      logger.debug(
+        `Requested docs:\n${documentIds.map((id) => `- ${id}`).join("\n")}`,
+      );
+
+      // Retrieve with document ID filtering passed to the retriever
+      // The retriever will pass the filter to the vector store for Chroma metadata filtering
+      const results = await this.retriever.retrieve(query, documentIds);
+
+      logger.debug(`Retrieved ${results.length} chunks before filtering`);
+
+      // Log every chunk
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        const chunkDocId = r.document.metadata?.documentId as string | undefined;
+        const textPreview = r.document.pageContent.slice(0, 200);
+        logger.debug(
+          `Chunk ${i + 1}:\n` +
+          `documentId=${chunkDocId ?? "undefined"}\n` +
+          `text=${textPreview}`,
+        );
+      }
+
+      logger.debug(`Retrieved ${results.length} chunks after filtering`);
+
+      if (results.length === 0) {
+        logger.debug("No relevant chunks found in attached documents");
+        return null;
+      }
+
+      // Format the context
+      const context = this.formatContext(results);
+
+      const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
+
+      logger.info(
+        `Retrieved ${results.length} chunks from attachment scope ` +
+        `(avg score: ${avgScore.toFixed(3)})`,
+      );
+
+      return {
+        context,
+        chunkCount: results.length,
+        avgScore,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.error(`Attachment-scoped RAG retrieval failed: ${errorMessage}`);
+      return null;
+    }
+  }
+
+  /**
    * Format retrieved search results into a system message context.
    *
    * @param results - Array of search results from the retriever.
@@ -172,48 +263,50 @@ class RagService {
   /**
    * Check if the RAG service is initialized and available.
    * Performs a lightweight connectivity check to verify ChromaDB is reachable.
+   * This check is always dynamic — it never caches results.
    *
    * @returns true if the service is initialized and ChromaDB is reachable
    */
   async isAvailable(): Promise<boolean> {
-    // If we have a cached health check result, use it
-    if (this.lastHealthCheck !== null) {
-      return this.lastHealthCheck;
-    }
-
     // If not initialized, try to initialize
     if (!this.retriever) {
       const success = await this.initialize();
       if (!success) {
-        this.lastHealthCheck = false;
         return false;
       }
     }
 
     // If still no retriever, not available
     if (!this.retriever) {
-      this.lastHealthCheck = false;
       return false;
     }
 
-    // Perform lightweight connectivity check
+    // Perform lightweight connectivity check (no caching)
     try {
-      const isHealthy = await this.vectorStore!.isHealthy();
-      this.lastHealthCheck = isHealthy;
-      return isHealthy;
+      return await this.vectorStore!.isHealthy();
     } catch (error) {
       logger.debug(`Health check failed: ${error}`);
-      this.lastHealthCheck = false;
       return false;
     }
   }
 
   /**
-   * Reset the cached health check status.
-   * Called after initialization or reset to force a fresh health check.
+   * Check if the retriever is ready (initialized and functional).
+   * This is a lightweight check that does NOT perform any semantic search.
+   * It only verifies that the pipeline components are initialized.
+   *
+   * @returns true if the retriever is initialized and ready for queries
    */
-  private resetHealthCheck(): void {
-    this.lastHealthCheck = null;
+  async isRetrieverReady(): Promise<boolean> {
+    // If not initialized, try to initialize
+    if (!this.retriever) {
+      const success = await this.initialize();
+      if (!success) {
+        return false;
+      }
+    }
+
+    return this.retriever !== null;
   }
 
   /**
@@ -240,7 +333,6 @@ class RagService {
       this.retriever = null;
       this.initialized = false;
       this.initError = null;
-      this.resetHealthCheck();
       logger.debug("RAG service reset complete");
     }
   }

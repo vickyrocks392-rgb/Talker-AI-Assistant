@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { UserPersona } from "../types";
 import type { Conversation, Message } from "../types";
+import type { ChatAttachment } from "../lib/api";
 import {
   fetchConversations,
   createConversation,
@@ -194,7 +195,7 @@ export const useChatManager = ({
   // ── Send a message ───────────────────────────────────────────────
 
   const sendMessageToBot = useCallback(
-    async (textToSend: string) => {
+    async (textToSend: string, attachments?: ChatAttachment[]) => {
       const trimmed = textToSend.trim();
       if (!trimmed) return;
 
@@ -229,13 +230,14 @@ export const useChatManager = ({
       scrollToBottom();
 
       try {
-        // Send via streaming
+        // Send via streaming with attachments
         const result = await sendChatMessageStream(
           {
             text: trimmed,
             conversationId: targetId,
             persona,
             stream: true,
+            attachments: attachments ?? [],
           },
           // onToken — we don't update UI per-token since we reload from backend
           () => {},

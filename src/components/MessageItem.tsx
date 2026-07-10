@@ -1,10 +1,10 @@
 import React from "react";
-// @ts-nocheck
-import { Copy, Check, Volume2, Square } from "lucide-react";
+import { Copy, Check, Volume2, Square, RefreshCw, Share2 } from "lucide-react";
 import { motion } from "motion/react";
 import type { Message } from "../types";
 import { formatMessageTime } from "../lib/date-utils";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { RagIndicator } from "./RagIndicator";
 
 interface MessageItemProps {
   msg: Message;
@@ -30,68 +30,84 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`flex flex-col ${isUser ? "items-end" : "items-start"} mb-4 w-full`}
+      transition={{ duration: 0.2 }}
+      className={`flex flex-col ${isUser ? "items-end" : "items-start"} mb-6 w-full`}
     >
-      {/* User speech bubble */}
+      {/* User message */}
       {isUser ? (
-        <>
-          <div className="max-w-[85%] bg-red-600 text-white px-3.5 py-2.5 rounded-2xl rounded-tr-none shadow font-medium text-xs leading-normal font-sans">
-            <p>{msg.content}</p>
+        <div className="max-w-[80%] md:max-w-[70%]">
+          <div className="bg-red-600 text-white px-4 py-3 rounded-2xl rounded-tr-sm shadow-sm">
+            <p className="text-sm leading-relaxed">{msg.content}</p>
           </div>
-          <div className="flex items-center gap-2 mt-1 mr-1.5 select-none text-[9px] text-zinc-500 font-mono">
-            <span>USER</span>
+          <div className="flex items-center gap-2 mt-1.5 mr-1 select-none text-[11px] text-gray-500">
+            <span>You</span>
             {msg.createdAt && (
-              <span>• {formatMessageTime(msg.createdAt)}</span>
+              <>
+                <span>•</span>
+                <span>{formatMessageTime(msg.createdAt)}</span>
+              </>
             )}
           </div>
-        </>
+        </div>
       ) : (
-        /* Assistant Speech response bubble */
-        <>
-          <div className="max-w-[95%] bg-zinc-950 border border-zinc-900 p-4 rounded-2xl rounded-tl-none text-xs leading-normal">
+        /* Assistant message */
+        <div className="max-w-[85%] md:max-w-[80%]">
+          {/* RAG Context Indicator */}
+          {msg.ragContext && (
+            <RagIndicator
+              used={msg.ragContext.used}
+              documentsSearched={msg.ragContext.documentsSearched}
+              contextType={msg.ragContext.contextType}
+            />
+          )}
+          
+          <div className="bg-white border border-gray-200 p-5 rounded-2xl rounded-tl-sm shadow-sm">
             {/* Answer text */}
             {hasCodeBlocks && msg.content.trim().startsWith("```") && (
-              <p className="text-zinc-300 mb-2">Here's a code example:</p>
+              <p className="text-sm text-gray-600 mb-3">Here's a code example:</p>
             )}
-            <div className="text-zinc-100 mb-3">
+            <div className="text-sm text-gray-900 leading-relaxed">
               <MarkdownRenderer content={msg.content} />
             </div>
 
             {/* Control buttons */}
-            <div className="flex items-center gap-1.5 mt-3 pt-2 border-t border-zinc-900/60">
+            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100">
               <button
                 onClick={() => onSpeak(msg.content, msg.id)}
-                className={`bg-black hover:bg-zinc-900 border px-2.5 py-1 rounded-lg cursor-pointer transition text-[10px] font-medium flex items-center gap-1 ${
+                className={`px-3 py-1.5 rounded-lg border cursor-pointer transition text-xs font-medium flex items-center gap-1.5 ${
                   speakingMessageId === msg.id
-                    ? "border-red-500 text-red-400"
-                    : "border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                    ? "bg-red-50 border-red-200 text-red-700"
+                    : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300"
                 }`}
                 title={speakingMessageId === msg.id ? "Stop speaking" : "Read aloud"}
               >
                 {speakingMessageId === msg.id ? (
-                  <><Square className="w-3 h-3" /><span>Stop</span></>
+                  <><Square className="w-3.5 h-3.5" /><span>Stop</span></>
                 ) : (
-                  <><Volume2 className="w-3 h-3" /><span>Listen</span></>
+                  <><Volume2 className="w-3.5 h-3.5" /><span>Listen</span></>
                 )}
               </button>
               <button
                 onClick={() => onCopy(msg.content, msg.id)}
-                className="bg-black hover:bg-zinc-900 border border-zinc-900 px-2.5 py-1 rounded-lg text-zinc-400 hover:text-zinc-200 cursor-pointer transition text-[10px] font-medium flex items-center gap-1"
-                title="Copy Original text"
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 cursor-pointer transition text-xs font-medium flex items-center gap-1.5 bg-white"
+                title="Copy text"
               >
-                {copiedId === msg.id ? <Check className="w-3 h-3 text-red-500" /> : <Copy className="w-3 h-3" />}
-                <span>{copiedId === msg.id ? "Copied" : hasCodeBlocks ? "Copy Code" : "Copy Text"}</span>
+                {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-red-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedId === msg.id ? "Copied" : "Copy"}</span>
               </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mt-1 ml-1.5 select-none text-[9px] text-zinc-500 font-mono">
-            <span>ASSISTANT</span>
+          <div className="flex items-center gap-2 mt-1.5 ml-1 select-none text-[11px] text-gray-500">
+            <span>Assistant</span>
             {msg.createdAt && (
-              <span>• {formatMessageTime(msg.createdAt)}</span>
+              <>
+                <span>•</span>
+                <span>{formatMessageTime(msg.createdAt)}</span>
+              </>
             )}
           </div>
-        </>
+        </div>
       )}
     </motion.div>
   );

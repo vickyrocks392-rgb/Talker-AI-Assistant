@@ -66,14 +66,15 @@ export class RagRetriever implements Retriever {
    *
    * The pipeline is:
    *   1. Embed the query text into a vector
-   *   2. Search the vector store for similar vectors
+   *   2. Search the vector store for similar vectors (with optional document ID filter)
    *   3. Filter results below the score threshold
    *   4. Return the top-k results
    *
    * @param query - The search query text.
+   * @param documentIds - Optional array of document IDs to scope retrieval to.
    * @returns Array of search results, ordered by relevance (highest score first).
    */
-  async retrieve(query: string): Promise<SearchResult[]> {
+  async retrieve(query: string, documentIds?: string[]): Promise<SearchResult[]> {
     logger.debug(`Retrieving for query: "${query.slice(0, 80)}..."`);
 
     // Step 1: Embed the query
@@ -81,8 +82,19 @@ export class RagRetriever implements Retriever {
 
     logger.debug(`Query embedded: ${queryVector.length} dimensions`);
 
-    // Step 2: Search the vector store
-    const results = await this.vectorStore.similaritySearch(query, this.config.k);
+    // Step 2: Search the vector store (with optional document ID filter)
+    // Chroma requires operators like $eq (single) or $in (multiple)
+    const filter = documentIds && documentIds.length > 0
+      ? {
+          documentId: {
+            ...(documentIds.length === 1
+              ? { $eq: documentIds[0] }
+              : { $in: documentIds }),
+          },
+        }
+      : undefined;
+    
+    const results = await this.vectorStore.similaritySearch(query, this.config.k, filter);
 
     // Step 3: Filter by score threshold
     const filtered = results.filter(

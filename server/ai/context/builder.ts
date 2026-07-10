@@ -38,6 +38,7 @@ import type { OllamaMessage } from "../types";
 import type { Persona, ConversationMessage } from "../types";
 import type { ContextBuilderOptions, ContextBuilderResult, ContextMetadata, ContextSection } from "./types";
 import type { ExecutionPlan } from "../orchestrator/types";
+import type { ChatAttachment } from "../../../shared/types";
 
 const logger = createLogger("ContextBuilder");
 
@@ -191,6 +192,153 @@ export class ContextBuilder {
   }
 
   /**
+   * Build context with attachment awareness.
+   *
+   * When attachments are present, this method:
+   * 1. Injects attachment metadata into the system prompt
+   * 2. Scopes RAG retrieval to only the attached documents
+   * 3. Adds a prompt hint so pronouns (this, it, the document) resolve naturally
+   *
+   * @param options - Standard context builder options.
+   * @param attachments - Array of attached documents (documentId + filename).
+   * @returns The assembled context with metadata.
+   */
+  async buildWithAttachments(
+    options: ContextBuilderOptions,
+    attachments: ChatAttachment[],
+  ): Promise<ContextBuilderResult> {
+    const { text, conversationId, history, persona, executionPlan } = options;
+
+    // ── 1. System Prompt ──────────────────────────────────────────
+    const baseSystemPrompt = createChatSystemPrompt(persona);
+
+    // Inject attachment metadata into the system prompt
+    const attachmentNames = attachments.map((a) => a.filename).join(", ");
+    const attachmentHint =
+      `\n\nAttached Documents: ${attachmentNames}\n` +
+      `This message refers to these attached documents unless explicitly stated otherwise. ` +
+      `Pronouns such as "this", "it", "the document", "the file" refer to the attached documents.`;
+
+    const systemPrompt = baseSystemPrompt + attachmentHint;
+
+    // ── 2. Conversation Memory (conditional) ──────────────────────
+    const shouldUseMemory = executionPlan ? executionPlan.useMemory : true;
+    const historyMessages = shouldUseMemory
+      ? this.loadHistory(conversationId, history)
+      : [];
+
+    // ── 3. RAG Context (conditional, scoped to attachments) ───────
+    const documentIds = attachments
+      .filter((a) => a.documentId)
+      .map((a) => a.documentId);
+
+    // If attachments exist, always run attachment-scoped retrieval
+    // regardless of what the orchestration planner decided.
+    // This prevents the planner from skipping RAG when documents
+    // are explicitly attached to the message.
+    const shouldUseRag =
+      documentIds.length > 0
+        ? true
+        : executionPlan
+          ? executionPlan.useRag
+          : true;
+
+    logger.debug(
+      `Received attachments: ${attachmentNames}`,
+    );
+
+    const ragResult = shouldUseRag
+      ? await this.retrieveRagContextForAttachments(text, documentIds)
+      : null;
+
+    // ── 4. Tool Context (conditional) ─────────────────────────────
+    const shouldUseTools = executionPlan ? executionPlan.useTools : true;
+    const toolResult = shouldUseTools
+      ? await this.executeToolIfNeeded(text, executionPlan)
+      : null;
+
+    // ── Build sections for budgeting ──────────────────────────────
+    const sections: ContextSection[] = [];
+
+    // System prompt (Critical priority)
+    sections.push({
+      label: "system_prompt",
+      priority: ContextPriority.Critical,
+      content: systemPrompt,
+      role: "system",
+    });
+
+    // Conversation history (Low priority — can be truncated)
+    for (const msg of historyMessages) {
+      sections.push({
+        label: `history_${msg.role}`,
+        priority: ContextPriority.Low,
+        content: msg.content,
+        role: msg.role === "user" ? "user" : "assistant",
+      });
+    }
+
+    // RAG context (Medium priority)
+    if (ragResult) {
+      sections.push({
+        label: "rag_context",
+        priority: ContextPriority.Medium,
+        content: formatRagContext(ragResult),
+        role: "system",
+      });
+    }
+
+    // Tool context (High priority)
+    if (toolResult) {
+      sections.push({
+        label: `tool_${toolResult.toolName}`,
+        priority: ContextPriority.High,
+        content: formatToolContext(toolResult.toolName, toolResult.result),
+        role: "system",
+      });
+    }
+
+    // Current user message (Critical priority)
+    sections.push({
+      label: "current_user_message",
+      priority: ContextPriority.Critical,
+      content: text,
+      role: "user",
+    });
+
+    // ── Apply token budget ────────────────────────────────────────
+    const budgetedSections = this.budgeter.applyBudget(sections);
+
+    // ── Convert sections to OllamaMessage[] ───────────────────────
+    const messages: OllamaMessage[] = budgetedSections.map((s) => ({
+      role: s.role,
+      content: s.content,
+    }));
+
+    // ── Build metadata ────────────────────────────────────────────
+    const metadata: ContextMetadata = {
+      hasRagContext: ragResult !== null,
+      ragChunkCount: ragResult?.chunkCount ?? 0,
+      ragAvgScore: ragResult?.avgScore ?? 0,
+      hasToolResult: toolResult !== null,
+      toolName: toolResult?.toolName ?? "",
+      toolSuccess: toolResult?.result.success ?? false,
+      historyMessageCount: historyMessages.length,
+      totalChars: messages.reduce((sum, m) => sum + m.content.length, 0),
+    };
+
+    logger.info(
+      `Context built with attachments: ${messages.length} messages, ` +
+      `${metadata.totalChars} chars, ` +
+      `rag=${metadata.hasRagContext} (${metadata.ragChunkCount} chunks), ` +
+      `attachments=[${attachmentNames}]` +
+      (executionPlan ? `, plan=${executionPlan.mode}` : ""),
+    );
+
+    return { messages, metadata };
+  }
+
+  /**
    * Load conversation history from MemoryService or legacy history array.
    */
   private loadHistory(
@@ -244,6 +392,33 @@ export class ContextBuilder {
       return ragContext;
     } catch (error) {
       logger.error("RAG context retrieval failed", error);
+      return null;
+    }
+  }
+
+  /**
+   * Retrieve RAG context scoped to specific attached documents.
+   */
+  private async retrieveRagContextForAttachments(
+    text: string,
+    documentIds: string[],
+  ): Promise<{ context: string; chunkCount: number; avgScore: number } | null> {
+    try {
+      const ragContext = await ragService.retrieveContextForDocuments(text, documentIds);
+
+      if (!ragContext) {
+        logger.debug("No RAG context retrieved from attached documents");
+        return null;
+      }
+
+      logger.info(
+        `Retrieved ${ragContext.chunkCount} chunks from attachment scope ` +
+        `(avg score: ${ragContext.avgScore.toFixed(3)})`,
+      );
+
+      return ragContext;
+    } catch (error) {
+      logger.error("Attachment-scoped RAG retrieval failed", error);
       return null;
     }
   }

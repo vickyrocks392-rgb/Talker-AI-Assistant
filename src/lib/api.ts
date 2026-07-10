@@ -96,11 +96,17 @@ export function deleteConversation(id: string): Promise<void> {
 
 // ── Chat API ─────────────────────────────────────────────────────────
 
+export interface ChatAttachment {
+  documentId: string;
+  filename: string;
+}
+
 export interface ChatRequestParams {
   text: string;
   conversationId: string;
   persona: Persona;
   stream?: boolean;
+  attachments?: ChatAttachment[];
 }
 
 /** POST /api/chat — send a message (non-streaming). */
@@ -114,6 +120,7 @@ export function sendChatMessage(
       conversationId: params.conversationId,
       persona: params.persona,
       stream: params.stream ?? false,
+      attachments: params.attachments ?? [],
     }),
   });
 }
@@ -142,6 +149,7 @@ export function sendChatMessageStream(
         conversationId: params.conversationId,
         persona: params.persona,
         stream: true,
+        attachments: params.attachments ?? [],
       }),
     })
       .then(async (response) => {

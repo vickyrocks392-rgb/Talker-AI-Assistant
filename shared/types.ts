@@ -58,12 +58,19 @@ export interface ConversationMessage {
   text: string;
 }
 
+/** A document attached to a chat message. */
+export interface ChatAttachment {
+  documentId: string;
+  filename: string;
+}
+
 /** Request body for `POST /api/chat`. */
 export interface ChatRequest {
   text: string;
   conversationId?: string;
   history?: ConversationMessage[];
   persona?: Persona;
+  attachments?: ChatAttachment[];
 }
 
 /** Response body for `POST /api/chat`. */

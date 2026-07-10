@@ -1,10 +1,13 @@
-import React from "react";
-// @ts-nocheck
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { MessageSquare, Mic, MicOff, Smartphone, ArrowRight, BrainCircuit, Navigation, Calendar } from "lucide-react";
+import { Mic, MicOff, ArrowRight, BrainCircuit, Calendar, Sparkles, MessageSquare, Code, Search, BookOpen, Paperclip, X, FileText, Loader2, Upload, AlertCircle } from "lucide-react";
 import type { Message } from "../types";
+import type { ChatAttachment } from "../lib/api";
 import { MessageItem } from "./MessageItem";
 import { formatDateSeparator } from "../lib/date-utils";
+import { useDocumentManager } from "../hooks/useDocumentManager";
+import { AttachmentChip, type Attachment, type AttachmentStatus } from "./AttachmentChip";
+import { DocumentPreviewDrawer } from "./DocumentPreviewDrawer";
 
 const getMessageDate = (createdAt: any): Date | null => {
   if (!createdAt) return null;
@@ -27,7 +30,6 @@ const isSameDay = (d1: Date | null, d2: Date | null): boolean => {
   );
 };
 
-
 interface ChatViewportProps {
   messages: Message[];
   loading: boolean;
@@ -40,7 +42,7 @@ interface ChatViewportProps {
   isListening: boolean;
   onStartVoiceCapture: () => void;
   onStopVoiceCapture: () => void;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, attachments?: ChatAttachment[]) => void;
   speakingMessageId: string | null;
   copiedId: string | null;
   onSpeak: (text: string, id: string) => void;
@@ -48,11 +50,23 @@ interface ChatViewportProps {
   devScrollRef: React.RefObject<HTMLDivElement | null>;
 }
 
-const QUICK_PROMPTS = [
-  { label: "Show quiet coffee shops near me" },
-  { label: "Walking directions from Central Park to Times Square" },
-  { label: "Find museums in London that are peaceful" },
-  { label: "What is the history of Seattle Space Needle?" }
+const CAPABILITIES = [
+  { icon: BrainCircuit, label: "Memory", description: "Remembers context across conversations" },
+  { icon: BookOpen, label: "Knowledge", description: "Learns from your documents" },
+  { icon: Code, label: "Code", description: "Writes & explains code" },
+  { icon: MessageSquare, label: "Voice", description: "Natural conversation" },
+  { icon: Sparkles, label: "Reasoning", description: "Solves complex problems" },
+];
+
+const SUGGESTED_PROMPTS = [
+  "Explain this PDF",
+  "Summarize my resume",
+  "Help write Python",
+  "Debug TypeScript",
+  "Explain machine learning",
+  "Calculate compound interest",
+  "Write a React component",
+  "Analyze this data",
 ];
 
 export const ChatViewport: React.FC<ChatViewportProps> = ({
@@ -74,235 +88,406 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
   onCopy,
   devScrollRef
 }) => {
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragCounter, setDragCounter] = useState(0);
+  const [previewDocumentId, setPreviewDocumentId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const prevMessagesLengthRef = useRef(messages.length);
+
+  // ── Build attachment payload from current indexed attachments ──────
+  // Converts local Attachment objects to ChatAttachment for API requests
+  const buildAttachmentPayload = useCallback((): ChatAttachment[] => {
+    return attachments
+      .filter(a => a.status === "indexed" && a.documentId)
+      .map(a => ({
+        documentId: a.documentId!,
+        filename: a.filename,
+      }));
+  }, [attachments]);
+
+  const {
+    documents,
+    uploadDocument,
+    deleteDocument,
+    activeDocumentId,
+    isUploading,
+    uploadProgress,
+    indexingStatus,
+    error,
+    setActiveDocument,
+  } = useDocumentManager();
+
+  // ── Clear attachments when a new conversation starts ──────────────
+  useEffect(() => {
+    if (prevMessagesLengthRef.current > 0 && messages.length === 0) {
+      setAttachments([]);
+    }
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages.length]);
+
+  // ── Sync upload progress from useDocumentManager ──────────────────
+  useEffect(() => {
+    if (isUploading) {
+      // We don't have the filename yet during upload start,
+      // so we wait for the documents list to update
+    }
+  }, [isUploading]);
+
+  // ── When documents change, sync attachments with backend state ────
+  useEffect(() => {
+    if (documents.length === 0) return;
+
+    setAttachments(prev => {
+      const updated = [...prev];
+
+      for (const doc of documents) {
+        const existing = updated.find(a => a.documentId === doc.documentId);
+        if (existing) {
+          if (doc.status === "indexed" && existing.status !== "indexed") {
+            const idx = updated.indexOf(existing);
+            updated[idx] = {
+              ...existing,
+              status: "indexed",
+              progress: 100,
+            };
+          } else if (doc.status === "failed" && existing.status !== "error") {
+            const idx = updated.indexOf(existing);
+            updated[idx] = {
+              ...existing,
+              status: "error",
+              errorMessage: "Indexing failed",
+            };
+          }
+        } else {
+          const pending = updated.find(
+            a => a.documentId === null && a.filename === doc.filename
+          );
+          if (pending) {
+            const idx = updated.indexOf(pending);
+            updated[idx] = {
+              ...pending,
+              documentId: doc.documentId,
+              status: doc.status === "indexed" ? "indexed" : "indexing",
+              progress: doc.status === "indexed" ? 100 : 90,
+            };
+          }
+        }
+      }
+
+      return updated;
+    });
+  }, [documents]);
+
+  // ── Handle file selection ─────────────────────────────────────────
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!(file instanceof File)) return;
+
+    const pendingAttachment: Attachment = {
+      documentId: null,
+      filename: file.name,
+      status: "uploading",
+      progress: 0,
+    };
+    setAttachments(prev => [...prev, pendingAttachment]);
+
+    try {
+      await uploadDocument(file);
+    } catch (error: any) {
+      setAttachments(prev =>
+        prev.map(a =>
+          a.filename === file.name && a.documentId === null
+            ? { ...a, status: "error" as AttachmentStatus, errorMessage: error.message || "Upload failed" }
+            : a
+        )
+      );
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, [uploadDocument]);
+
+  const handlePaperclipClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleRemoveAttachment = useCallback((filename: string) => {
+    setAttachments(prev => prev.filter(a => a.filename !== filename));
+  }, []);
+
+  const handleOpenPreview = useCallback((documentId: string) => {
+    setPreviewDocumentId(documentId);
+  }, []);
+
+  const handleClosePreview = useCallback(() => {
+    setPreviewDocumentId(null);
+  }, []);
+
+  const previewDocument = previewDocumentId
+    ? documents.find(d => d.documentId === previewDocumentId) || null
+    : null;
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(prev => prev + 1);
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragCounter(prev => prev - 1);
+    if (dragCounter === 1) {
+      setIsDragging(false);
+    }
+  }, [dragCounter]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    setDragCounter(0);
+
+    const files = Array.from(e.dataTransfer.files);
+    for (const file of files) {
+      const fileObj = file as File;
+
+      const pendingAttachment: Attachment = {
+        documentId: null,
+        filename: fileObj.name,
+        status: "uploading",
+        progress: 0,
+      };
+      setAttachments(prev => [...prev, pendingAttachment]);
+
+      try {
+        await uploadDocument(fileObj);
+      } catch (error: any) {
+        setAttachments(prev =>
+          prev.map(a =>
+            a.filename === fileObj.name && a.documentId === null
+              ? { ...a, status: "error" as AttachmentStatus, errorMessage: error.message || "Upload failed" }
+              : a
+          )
+        );
+      }
+    }
+  }, [uploadDocument]);
+
+  // ── Handle send ──────────────────────────────────────────────────
+  const handleSend = useCallback(() => {
+    if (!inputText.trim() || loading) return;
+    const payload = buildAttachmentPayload();
+    onSendMessage(inputText, payload.length > 0 ? payload : undefined);
+  }, [inputText, loading, onSendMessage, buildAttachmentPayload]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }, [handleSend]);
+
   return (
-    <div className="flex-1 flex flex-col justify-between border border-zinc-900 rounded-2xl bg-zinc-950/40 p-4 min-h-[420px] overflow-hidden">
-      
-      {/* Messages Display */}
-      <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-3 min-h-[350px] scrollbar-thin scrollbar-thumb-zinc-800">
-        
-        {messages.length === 0 && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-4 my-auto select-none">
-            <BrainCircuit className="w-10 h-10 text-red-600 mb-3 animate-pulse" />
-            <p className="text-sm text-white font-sans font-bold">Talker AI Assistant</p>
-            <p className="text-[11px] text-zinc-400 mt-1 max-w-[280px] leading-relaxed">
-              I am your friendly assistant. Speak or type! I can search locations, provide directions, and remember your preferences.
-            </p>
-
-            {/* Hands-free call to action */}
-            <button 
-              onClick={onToggleHandsFree}
-              className="mt-5 px-4 py-2 rounded-xl bg-red-950/40 border border-red-500/20 hover:border-red-500/50 hover:bg-red-950/80 transition text-red-500 text-xs font-bold flex items-center gap-2 cursor-pointer"
-            >
-              <Mic className="w-4 h-4 text-red-500 animate-pulse" /> Start Hands-Free Mode
-            </button>
-          </div>
+    <div 
+      className="flex-1 flex flex-col overflow-hidden relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-red-50/90 backdrop-blur-sm z-30 flex items-center justify-center border-2 border-dashed border-red-400 m-4 rounded-2xl"
+          >
+            <div className="text-center">
+              <Upload className="w-16 h-16 text-red-600 mx-auto mb-4" />
+              <p className="text-lg font-semibold text-gray-900 mb-2">Drop document to upload</p>
+              <p className="text-sm text-gray-600">PDF, TXT, MD, DOCX, CSV</p>
+            </div>
+          </motion.div>
         )}
+      </AnimatePresence>
 
-        {(() => {
-          const elements: React.ReactNode[] = [];
-          let lastDate: Date | null = null;
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 md:px-6 py-6">
+        <div className="max-w-3xl mx-auto w-full space-y-6">
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center text-center py-12 animate-fade-in">
+              <div className="w-20 h-20 rounded-2xl bg-red-600 flex items-center justify-center shadow-lg mb-8">
+                <BrainCircuit className="text-white w-10 h-10" />
+              </div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-3">Talker AI</h1>
+              <p className="text-base text-gray-600 max-w-lg mb-10">
+                Your intelligent AI workspace with memory, knowledge retrieval, and voice capabilities.
+              </p>
 
-          messages.forEach((msg, index) => {
-            const currentDate = getMessageDate(msg.createdAt);
-            const showSeparator = currentDate && (!lastDate || !isSameDay(lastDate, currentDate));
-            
-            if (showSeparator) {
-              const separatorText = formatDateSeparator(msg.createdAt);
-              if (separatorText) {
-                elements.push(
-                  <div key={`sep-${msg.id || index}`} className="flex items-center justify-center my-5 select-none">
-                    <div className="h-[1px] bg-gradient-to-r from-transparent via-zinc-800 to-transparent flex-1" />
-                    <div className="mx-4 px-3.5 py-1.5 rounded-full bg-zinc-950 border border-zinc-900 shadow-sm flex items-center gap-1.5 text-[10px] text-zinc-400 font-mono tracking-wider uppercase font-bold">
-                      <Calendar className="w-3.5 h-3.5 text-red-500" />
-                      <span>{separatorText}</span>
-                    </div>
-                    <div className="h-[1px] bg-gradient-to-r from-transparent via-zinc-800 to-transparent flex-1" />
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-10 w-full max-w-2xl">
+                {CAPABILITIES.map((capability) => (
+                  <div key={capability.label} className="bg-white border border-gray-200 rounded-xl p-4 text-center hover:border-red-200 hover:shadow-md transition-all duration-200">
+                    <capability.icon className="w-6 h-6 text-red-600 mx-auto mb-2" />
+                    <div className="text-sm font-semibold text-gray-900 mb-0.5">{capability.label}</div>
+                    <div className="text-xs text-gray-500">{capability.description}</div>
                   </div>
-                );
-              }
-            }
+                ))}
+              </div>
 
-            elements.push(
-              <MessageItem
-                key={msg.id || index}
-                msg={msg}
-                index={index}
-                speakingMessageId={speakingMessageId}
-                copiedId={copiedId}
-                onSpeak={onSpeak}
-                onCopy={onCopy}
-              />
-            );
-
-            if (currentDate) {
-              lastDate = currentDate;
-            }
-          });
-
-          return elements;
-        })()}
-
-        {loading && (
-          <div className="flex items-center gap-2 text-xs text-zinc-500 font-mono italic animate-pulse p-2">
-            <div className="flex gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-600 animate-bounce" style={{ animationDelay: '0s' }} />
-              <span className="w-2 h-2 rounded-full bg-red-600 animate-bounce" style={{ animationDelay: '0.15s' }} />
-              <span className="w-2 h-2 rounded-full bg-red-600 animate-bounce" style={{ animationDelay: '0.3s' }} />
+              <div className="w-full max-w-2xl">
+                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-3">Suggested Actions</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {SUGGESTED_PROMPTS.map((prompt, idx) => (
+                    <button key={idx}
+                      onClick={() => { onInputTextChange(prompt); onSendMessage(prompt); }}
+                      className="text-left px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 hover:border-red-300 hover:bg-red-50/50 transition-all duration-200"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <span>Companion is thinking...</span>
-          </div>
-        )}
-
-        {/* Speech / Input error states */}
-        {speechError && (
-          <div className="text-[10px] bg-red-950/60 border border-red-500/30 text-red-400 p-2.5 rounded-xl flex items-center justify-between">
-            <span className="flex-1">{speechError}</span>
-            <button onClick={onClearSpeechError} className="text-red-400 hover:text-red-300 font-bold ml-1">×</button>
-          </div>
-        )}
-
-        <div ref={devScrollRef} />
-      </div>
-
-      {/* Input fields bar with dynamic speech indicators */}
-      <div className="pt-3 border-t border-zinc-900 mt-2">
-        
-        {/* Hands-Free mode active warning bar */}
-        <AnimatePresence>
-          {handsFreeMode && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-red-600 text-white font-bold text-[10px] tracking-wider rounded-xl py-1.5 px-3 mb-2 flex items-center justify-between border border-red-400/20 animate-pulse uppercase"
-            >
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-white animate-ping inline-block mr-1" />
-                Hands-Free Active (Voice Loop)
-              </span>
-              <button 
-                onClick={onToggleHandsFree}
-                className="bg-zinc-950 text-red-500 font-sans border border-red-900/30 rounded-lg px-2 py-0.5 tracking-normal text-[9px] hover:text-white cursor-pointer transition uppercase font-semibold"
-              >
-                Mute
-              </button>
-            </motion.div>
           )}
-        </AnimatePresence>
 
-        {/* Predefined prompt helpers for quick testing */}
-        {messages.length === 0 && (
-          <div className="mb-3.5 space-y-1.5 select-none">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-zinc-500 font-sans">Quick Prompts:</div>
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_PROMPTS.map((qp, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    onInputTextChange(qp.label);
-                    onSendMessage(qp.label);
-                  }}
-                  className="bg-zinc-900 border border-zinc-850 hover:border-red-900/40 text-zinc-400 hover:text-white text-[10px] px-2.5 py-1.5 rounded-xl transition cursor-pointer text-left truncate max-w-[260px]"
-                >
-                  {qp.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Actual Chat form */}
-        <div className="flex items-center gap-2">
-          
-          {/* Microphones trigger */}
-          <button
-            type="button"
-            onClick={isListening ? onStopVoiceCapture : onStartVoiceCapture}
-            className={`w-11 h-11 rounded-xl flex items-center justify-center transition border cursor-pointer relative ${
-              isListening 
-                ? "bg-red-600 text-white border-red-500 shadow-lg shadow-red-600/30" 
-                : "bg-zinc-900 border-zinc-800 text-red-500 hover:border-red-900/40 hover:text-red-400"
-            }`}
-            title="Speak phrase"
-          >
-            {isListening ? (
-              <>
-                <MicOff className="w-5 h-5 animate-pulse" />
-                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
-                </span>
-              </>
-            ) : (
-              <Mic className="w-5 h-5" />
-            )}
-          </button>
-
-          <div className="flex-1 relative">
-            <textarea
-              value={inputText}
-              onChange={(e) => onInputTextChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
-                  e.preventDefault();
-                  onSendMessage(inputText);
-                } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  onSendMessage(inputText);
+          {messages.length > 0 && (() => {
+            const elements: React.ReactNode[] = [];
+            let lastDate: Date | null = null;
+            messages.forEach((msg, index) => {
+              const currentDate = getMessageDate(msg.createdAt);
+              const showSeparator = currentDate && (!lastDate || !isSameDay(lastDate, currentDate));
+              if (showSeparator) {
+                const separatorText = formatDateSeparator(msg.createdAt);
+                if (separatorText) {
+                  elements.push(
+                    <div key={`sep-${msg.id || index}`} className="flex items-center justify-center py-4">
+                      <div className="px-4 py-1.5 bg-white border border-gray-200 rounded-full text-xs text-gray-600 font-medium shadow-sm">{separatorText}</div>
+                    </div>
+                  );
                 }
-              }}
-              placeholder={
-                isListening 
-                  ? "Listening closely..." 
-                  : `Type your helper request...`
               }
-              rows={1}
-              className="w-full bg-zinc-900 focus:bg-zinc-900/90 border border-zinc-800 focus:border-red-500/50 rounded-xl py-3 pl-3.5 pr-12 text-xs text-white focus:outline-none transition leading-normal font-sans resize-none overflow-y-auto max-h-32"
-              disabled={loading}
-              onInput={(e) => {
-                const target = e.currentTarget;
-                target.style.height = "auto";
-                target.style.height = Math.min(target.scrollHeight, 128) + "px";
-              }}
-            />
+              elements.push(
+                <MessageItem key={msg.id || index} msg={msg} index={index}
+                  speakingMessageId={speakingMessageId} copiedId={copiedId}
+                  onSpeak={onSpeak} onCopy={onCopy} />
+              );
+              if (currentDate) lastDate = currentDate;
+            });
+            return elements;
+          })()}
 
-            {/* Send Button */}
-            <button
-              onClick={() => onSendMessage(inputText)}
-              disabled={loading || !inputText.trim()}
-              className={`absolute right-1.5 top-1.5 w-8 h-8 rounded-lg flex items-center justify-center transition cursor-pointer ${
-                inputText.trim() 
-                  ? "bg-red-600 text-white hover:bg-red-500" 
-                  : "bg-zinc-950 border border-zinc-900 text-zinc-700"
-              }`}
-            >
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
+          {loading && (
+            <div className="flex items-center gap-3 py-4">
+              <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center flex-shrink-0">
+                <BrainCircuit className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse" style={{ animationDuration: '1s', animationDelay: '0s' }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse" style={{ animationDuration: '1s', animationDelay: '0.2s' }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse" style={{ animationDuration: '1s', animationDelay: '0.4s' }} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {speechError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl flex items-center justify-between">
+              <span className="text-sm">{speechError}</span>
+              <button onClick={onClearSpeechError} className="text-red-700 hover:text-red-800 font-bold text-lg leading-none">×</button>
+            </div>
+          )}
+
+          <div ref={devScrollRef} />
         </div>
-
-        {/* Hands free switch button */}
-        <div className="flex items-center justify-between mt-2.5 px-1">
-          <span className="text-[10px] text-zinc-500 font-sans flex items-center gap-1">
-            <Smartphone className="w-3.5 h-3.5 text-zinc-600" />
-            <span>Voice recognition active</span>
-          </span>
-
-          <button 
-            onClick={onToggleHandsFree}
-            className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition flex items-center gap-1.5 cursor-pointer ${
-              handsFreeMode 
-                ? "bg-red-950/20 border-red-500/40 text-red-400" 
-                : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${handsFreeMode ? 'bg-red-500 animate-ping' : 'bg-zinc-600'}`} />
-            <span>Hands-Free Auto-Listening</span>
-          </button>
-        </div>
-
       </div>
 
+      <div className="border-t border-gray-200 bg-white px-4 md:px-6 py-4">
+        <div className="max-w-3xl mx-auto w-full">
+          <AnimatePresence>
+            {handsFreeMode && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-xl mb-3 flex items-center justify-between"
+              >
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                  Hands-free mode active
+                </span>
+                <button onClick={onToggleHandsFree} className="text-red-700 hover:text-red-800 font-semibold text-sm">Disable</button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {attachments.length > 0 && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mb-3">
+                <div className="flex flex-wrap gap-2">
+                  {attachments.map((attachment) => (
+                    <AttachmentChip key={attachment.filename} attachment={attachment}
+                      onRemove={handleRemoveAttachment} onOpenPreview={handleOpenPreview} />
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="flex items-end gap-2">
+            <button type="button" onClick={handlePaperclipClick}
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition border cursor-pointer flex-shrink-0 bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600"
+              title="Attach document"
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
+            <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md,.docx,.csv" onChange={handleFileSelect} className="hidden" />
+
+            <button type="button" onClick={isListening ? onStopVoiceCapture : onStartVoiceCapture}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition border cursor-pointer flex-shrink-0 ${
+                isListening ? "bg-red-600 text-white border-red-600 shadow-sm" : "bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600"
+              }`}
+              title={isListening ? "Stop listening" : "Start voice input"}
+            >
+              {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            </button>
+
+            <div className="flex-1 relative">
+              <textarea value={inputText} onChange={(e) => onInputTextChange(e.target.value)} onKeyDown={handleKeyDown}
+                placeholder="Message Talker AI..." rows={1}
+                className="w-full bg-white border border-gray-300 focus:border-red-500 rounded-xl py-3 pl-4 pr-12 text-sm text-gray-900 focus:outline-none transition resize-none placeholder-gray-500"
+                disabled={loading}
+                onInput={(e) => { const t = e.currentTarget; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 200) + "px"; }}
+              />
+              <button onClick={handleSend} disabled={loading || !inputText.trim()}
+                className={`absolute right-2 bottom-2 w-8 h-8 rounded-lg flex items-center justify-center transition cursor-pointer ${
+                  inputText.trim() && !loading ? "bg-red-600 text-white hover:bg-red-700 shadow-sm" : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                }`}
+              >
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-gray-500">
+            <span className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Enter</span>
+            <span>to send</span>
+            <span className="text-gray-300">•</span>
+            <span className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Shift + Enter</span>
+            <span>for new line</span>
+          </div>
+        </div>
+      </div>
+
+      <DocumentPreviewDrawer document={previewDocument} onClose={handleClosePreview} isOpen={previewDocumentId !== null} />
     </div>
   );
 };

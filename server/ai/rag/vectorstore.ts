@@ -126,22 +126,40 @@ export class RagVectorStore implements VectorStore {
    *
    * @param query - The search query text.
    * @param k - Number of results to return (default: 4).
+   * @param filter - Optional metadata filter to apply during search (e.g., { documentId: ["id1", "id2"] }).
    * @returns Array of search results with documents and similarity scores.
    */
-  async similaritySearch(query: string, k: number = 4): Promise<SearchResult[]> {
-    // similaritySearch called
-
+  async similaritySearch(query: string, k: number = 4, filter?: Record<string, unknown>): Promise<SearchResult[]> {
     const store = await this.getStore();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let rawResults: any;
+
+    // If a filter is provided, use similaritySearchWithScore with filter
+    if (filter && Object.keys(filter).length > 0) {
+      logger.debug(`Searching with metadata filter: ${JSON.stringify(filter)}`);
+      
+      // Use LangChain's similaritySearchWithScore with filter parameter
+      // The filter is passed directly to Chroma's where clause
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rawResults = await store.similaritySearchWithScore(query, k, filter as any);
+    } else {
+      // No filter - perform standard search
+      rawResults = await store.similaritySearchWithScore(query, k);
+    }
 
     // Chroma's similaritySearchWithScore returns [Document, number][] where
     // the score is a distance (lower = more similar). We normalise it to a
     // similarity score (higher = more similar) using: similarity = 1 / (1 + distance)
-    const results = await store.similaritySearchWithScore(query, k);
-
-    const searchResults: SearchResult[] = results.map(([doc, distance]) => ({
-      document: doc as RagDocument,
-      score: 1 / (1 + distance),
-    }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const searchResults: SearchResult[] = (rawResults as any[]).map(([doc, distance]) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ragDoc = doc as any as RagDocument;
+      return {
+        document: ragDoc,
+        score: 1 / (1 + distance),
+      };
+    });
 
     logger.debug(`Found ${searchResults.length} results`);
 

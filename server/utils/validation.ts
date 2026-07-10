@@ -8,6 +8,7 @@
 
 import { ValidationError } from "./errors";
 import type { ChatRequest, SummaryRequest } from "../ai/types";
+import type { ChatAttachment } from "../../shared/types";
 
 interface TTSRequest {
   text: string;
@@ -44,7 +45,7 @@ function assertArray(value: unknown, field: string): unknown[] {
  * Validate and coerce the body of a `POST /api/chat` request.
  *
  * Accepted body:
- *   { text: string; conversationId?: string; history?: ConversationMessage[]; persona?: Persona; stream?: boolean }
+ *   { text: string; conversationId?: string; history?: ConversationMessage[]; persona?: Persona; stream?: boolean; attachments?: ChatAttachment[] }
  */
 export function validateChatRequest(body: Record<string, unknown>): ChatRequest & { stream?: boolean } {
   const text = assertString(body.text, "text");
@@ -66,12 +67,49 @@ export function validateChatRequest(body: Record<string, unknown>): ChatRequest 
     conversationId = body.conversationId.trim();
   }
 
+  // Validate attachments if provided
+  let attachments: ChatAttachment[] | undefined;
+  if (body.attachments !== undefined) {
+    if (!Array.isArray(body.attachments)) {
+      throw new ValidationError(
+        '"attachments" must be an array if provided.',
+        "attachments",
+      );
+    }
+    attachments = (body.attachments as unknown[]).map((a, i) => {
+      if (!a || typeof a !== "object") {
+        throw new ValidationError(
+          `"attachments[${i}]" must be an object.`,
+          `attachments[${i}]`,
+        );
+      }
+      const att = a as Record<string, unknown>;
+      if (typeof att.documentId !== "string" || att.documentId.trim().length === 0) {
+        throw new ValidationError(
+          `"attachments[${i}].documentId" must be a non-empty string.`,
+          `attachments[${i}].documentId`,
+        );
+      }
+      if (typeof att.filename !== "string" || att.filename.trim().length === 0) {
+        throw new ValidationError(
+          `"attachments[${i}].filename" must be a non-empty string.`,
+          `attachments[${i}].filename`,
+        );
+      }
+      return {
+        documentId: att.documentId.trim(),
+        filename: att.filename.trim(),
+      };
+    });
+  }
+
   return {
     text,
     conversationId,
     history: history as ChatRequest["history"],
     persona: body.persona as ChatRequest["persona"],
     stream: typeof body.stream === "boolean" ? body.stream : undefined,
+    attachments,
   };
 }
 

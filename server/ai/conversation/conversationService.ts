@@ -3,24 +3,19 @@
  *
  * Phase 5: Refactored to use the Context Builder subsystem.
  * Phase 6: Integrated with the Intelligent Orchestration Layer.
+ * Phase 7: Attachment-aware RAG retrieval for attached documents.
  *
  * The Orchestrator now sits between the request and the Context Builder,
  * producing an ExecutionPlan that tells the Context Builder which context
  * sources to activate and which to skip.
  *
  * Flow:
- *   1. Receive request
+ *   1. Receive request (with optional attachments)
  *   2. Call Orchestrator → ExecutionPlan
- *   3. Call Context Builder with ExecutionPlan
+ *   3. Call Context Builder with ExecutionPlan and attachments
  *   4. Call Provider
  *   5. Persist Memory
  *   6. Return Response
- *
- * The Orchestrator eliminates unnecessary work:
- *   - Greetings: no RAG, no tools
- *   - Calculator: no RAG, no memory
- *   - Resume questions: RAG only, no tools
- *   - General chat: memory only, no RAG
  */
 
 import { parseChatResponse, StreamReplyExtractor } from "../parser";
@@ -32,6 +27,7 @@ import { ContextBuilder } from "../context";
 import { orchestrate } from "../orchestrator";
 import type { ChatResponse } from "../types";
 import type { Persona, ConversationMessage } from "../types";
+import type { ChatAttachment } from "../../../shared/types";
 
 const logger = createLogger("ConversationService");
 
@@ -41,6 +37,8 @@ export interface ConversationServiceRequest {
   history?: ConversationMessage[];
   persona?: Persona;
   stream?: boolean;
+  /** Optional attachments scoping RAG retrieval to specific documents. */
+  attachments?: ChatAttachment[];
 }
 
 export interface ConversationServiceResult {
@@ -74,7 +72,7 @@ const contextBuilder = new ContextBuilder();
 export async function handleNonStreaming(
   request: ConversationServiceRequest,
 ): Promise<ChatResponse> {
-  const { text, conversationId, persona } = request;
+  const { text, conversationId, persona, attachments } = request;
 
   // Step 1: Orchestrate — determine which context sources to use
   const { plan } = await orchestrate(text);
@@ -86,16 +84,24 @@ export async function handleNonStreaming(
     useTools: plan.useTools,
     tool: plan.tool,
     reason: plan.reason,
+    hasAttachments: !!attachments?.length,
   });
 
-  // Step 2: Build context using the Context Builder with the execution plan
-  const { messages, metadata } = await contextBuilder.build({
+  // Step 2: Build context using the Context Builder
+  const options = {
     text,
     conversationId,
     history: request.history,
     persona,
     executionPlan: plan,
-  });
+  };
+
+  const hasAttachments = attachments && attachments.length > 0;
+
+  // If attachments are present, use attachment-aware context building
+  const { messages, metadata } = hasAttachments
+    ? await contextBuilder.buildWithAttachments(options, attachments)
+    : await contextBuilder.build(options);
 
   logger.debug("Context built", {
     messageCount: messages.length,
@@ -104,6 +110,7 @@ export async function handleNonStreaming(
     hasTool: metadata.hasToolResult,
     historyCount: metadata.historyMessageCount,
     planMode: plan.mode,
+    attachmentsCount: attachments?.length ?? 0,
   });
 
   // Step 3: Call AI provider
@@ -128,6 +135,7 @@ export async function handleNonStreaming(
     mapType: parsed.mapAction.type,
     hasConversationId: !!conversationId,
     planMode: plan.mode,
+    hasAttachments: hasAttachments,
   });
 
   return chatResponse;
@@ -150,7 +158,7 @@ export async function handleStreaming(
   onDone: (result: ChatResponse) => void,
   onError: (error: string) => void,
 ): Promise<void> {
-  const { text, conversationId, persona } = request;
+  const { text, conversationId, persona, attachments } = request;
 
   // Step 1: Orchestrate — determine which context sources to use
   const { plan } = await orchestrate(text);
@@ -162,18 +170,34 @@ export async function handleStreaming(
     useTools: plan.useTools,
     tool: plan.tool,
     reason: plan.reason,
+    hasAttachments: !!attachments?.length,
   });
 
-  // Step 2: Build context using the Context Builder with the execution plan
-  // This happens BEFORE streaming starts, so streaming continues to work
-  // without any frontend changes.
-  const { messages, metadata } = await contextBuilder.build({
+  // Step 2: Build context using the Context Builder
+  const options = {
     text,
     conversationId,
     history: request.history,
     persona,
     executionPlan: plan,
-  });
+  };
+
+  const hasAttachments = attachments && attachments.length > 0;
+
+  let messages;
+  let metadata;
+
+  try {
+    const result = hasAttachments
+      ? await contextBuilder.buildWithAttachments(options, attachments)
+      : await contextBuilder.build(options);
+    messages = result.messages;
+    metadata = result.metadata;
+  } catch (error) {
+    logger.error("Failed to build context for streaming", error);
+    onError("Failed to build context");
+    return;
+  }
 
   logger.debug("Context built for streaming", {
     messageCount: messages.length,
@@ -182,6 +206,7 @@ export async function handleStreaming(
     hasTool: metadata.hasToolResult,
     historyCount: metadata.historyMessageCount,
     planMode: plan.mode,
+    attachmentsCount: attachments?.length ?? 0,
   });
 
   // Step 3: Call AI provider with streaming
@@ -208,7 +233,6 @@ export async function handleStreaming(
             memoryService.saveMessage(conversationId, "user", text);
             memoryService.saveMessage(conversationId, "assistant", parsed.replyText);
             
-            // Log what was persisted
             logger.debug("Messages persisted to memory", {
               conversationId,
               userMessage: text,

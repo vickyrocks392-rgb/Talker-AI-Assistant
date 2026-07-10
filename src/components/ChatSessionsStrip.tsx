@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Search, X, Trash2, Brain } from "lucide-react";
+import { Search, X, Trash2, Plus, MessageSquare, BookOpen } from "lucide-react";
 import type { Conversation, Message } from "../types";
 
 interface ChatSessionsStripProps {
@@ -27,101 +27,120 @@ export const ChatSessionsStrip: React.FC<ChatSessionsStripProps> = ({
     const queryLower = searchQuery.toLowerCase().trim();
 
     return conversations.filter(conv => {
-      // 1. Check if the conversation title matches the search query
       if (conv.title && conv.title.toLowerCase().includes(queryLower)) {
         return true;
       }
 
-      // 2. Check if any message in the current messages matches
       return messages.some(msg => {
         return msg.content && msg.content.toLowerCase().includes(queryLower);
       });
     });
   }, [conversations, messages, searchQuery]);
 
-  return (
-    <div className="flex-shrink-0 flex flex-col gap-2 mb-2 w-full select-none">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold font-mono">
-          Saved Conversations
-        </span>
-        <button
-          onClick={onCreateSession}
-          className="text-red-500 text-[10px] hover:text-red-400 flex items-center gap-1 cursor-pointer transition bg-red-950/20 border border-red-500/20 px-2 py-1 rounded-md uppercase font-bold tracking-wider"
-        >
-          + New Session
-        </button>
-      </div>
+  const formatTimeAgo = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-      {/* Search bar inside the sessions list */}
-      <div className="relative mb-2.5 flex items-center">
-        <Search className="absolute left-3 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
+    if (diffInSeconds < 60) return "Just now";
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+
+  return (
+    <div className="flex-shrink-0 flex flex-col gap-3 w-full select-none">
+      {/* Search bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search memories & topics..."
-          className="w-full pl-9 pr-8 py-2 text-xs bg-black border border-zinc-900 rounded-xl text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-red-500/40 transition font-sans"
+          placeholder="Search conversations..."
+          className="w-full pl-9 pr-8 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:border-red-500 focus:bg-white transition"
         />
         {searchQuery && (
           <button
             onClick={() => setSearchQuery("")}
-            className="absolute right-2.5 p-0.5 rounded-full hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 cursor-pointer"
-            title="Clear Search"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg hover:bg-gray-200 text-gray-500 hover:text-gray-700 cursor-pointer transition"
+            title="Clear search"
           >
-            <X className="w-3" />
+            <X className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
 
       {/* Sessions list */}
-      <div className="flex-1 overflow-y-auto flex flex-col gap-2 select-none no-scrollbar max-h-[calc(100vh-220px)] md:max-h-[calc(100vh-260px)] pr-1">
+      <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 no-scrollbar">
         {filtered.map((conv) => {
-          const queryLower = searchQuery.toLowerCase().trim();
-          const matchedMsg = searchQuery.trim() ? messages.find(msg => {
-            return msg.content && msg.content.toLowerCase().includes(queryLower);
-          }) : null;
+          const isActive = activeConversationId === conv.id;
+          const messageCount = messages.filter(m => m.conversationId === conv.id).length;
+          const lastMessage = messages.filter(m => m.conversationId === conv.id).slice(-1)[0];
 
           return (
             <div
               key={conv.id}
               onClick={() => onSelectChat(conv.id)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border cursor-pointer group transition duration-200 relative ${
-                activeConversationId === conv.id 
-                  ? "bg-zinc-900 border-red-500 text-white shadow-[0_0_10px_rgba(239,68,68,0.06)]" 
-                  : "bg-black border-zinc-950 text-zinc-400 hover:bg-zinc-900/40 hover:text-zinc-200"
+              className={`group relative p-3.5 rounded-xl border cursor-pointer transition-all duration-200 ${
+                isActive
+                  ? "bg-red-50 border-red-200 shadow-sm"
+                  : "bg-white border-gray-200 hover:border-gray-300 hover:shadow-md"
               }`}
             >
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${activeConversationId === conv.id ? "bg-red-500 animate-pulse" : "bg-zinc-700"}`} />
+              <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <span className="text-xs font-sans font-medium block truncate">
-                    {conv.title}
-                  </span>
-                  {matchedMsg && (
-                    <span className="block text-[9px] text-red-400 font-mono italic truncate mt-0.5">
-                      ↳ match: "{matchedMsg.content}"
-                    </span>
+                  <div className="flex items-center gap-2 mb-1">
+                    <MessageSquare className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                    <h3 className={`text-sm font-medium truncate ${isActive ? "text-gray-900" : "text-gray-700"}`}>
+                      {conv.title || "New Conversation"}
+                    </h3>
+                  </div>
+                  {lastMessage && (
+                    <p className="text-xs text-gray-500 truncate mb-2">
+                      {lastMessage.content}
+                    </p>
                   )}
+                  <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                    <span>{formatTimeAgo(conv.updatedAt)}</span>
+                    {messageCount > 0 && (
+                      <>
+                        <span className="text-gray-300">•</span>
+                        <span>{messageCount} {messageCount === 1 ? "msg" : "msgs"}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteSession(conv.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-all duration-200 cursor-pointer flex-shrink-0"
+                  title="Delete conversation"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteSession(conv.id);
-                }}
-                className="text-zinc-600 hover:text-red-400 p-1 rounded-md hover:bg-zinc-900 ml-2 opacity-0 group-hover:opacity-100 transition duration-150 cursor-pointer flex-shrink-0"
-                title="Delete Session"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
             </div>
           );
         })}
         {filtered.length === 0 && (
-          <p className="text-[11px] text-zinc-500 py-4 text-center font-mono bg-zinc-950/20 rounded-xl border border-dashed border-zinc-900">
-            {searchQuery.trim() ? "No matching sessions found." : "No saved chats yet. Start one above!"}
-          </p>
+          <div className="text-center py-8 px-4">
+            <p className="text-sm text-gray-500">
+              {searchQuery.trim() ? "No conversations found" : "No conversations yet"}
+            </p>
+            {!searchQuery.trim() && (
+              <button
+                onClick={onCreateSession}
+                className="mt-3 text-sm text-red-600 hover:text-red-700 font-medium transition"
+              >
+                Start your first conversation
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
