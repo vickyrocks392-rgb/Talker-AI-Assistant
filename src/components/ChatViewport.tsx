@@ -2,12 +2,13 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Mic, MicOff, ArrowRight, BrainCircuit, Calendar, Sparkles, MessageSquare, Code, Search, BookOpen, Paperclip, X, FileText, Loader2, Upload, AlertCircle } from "lucide-react";
 import type { Message } from "../types";
-import type { ChatAttachment } from "../lib/api";
+import type { ChatAttachment, AIMonitorDTO } from "../lib/api";
 import { MessageItem } from "./MessageItem";
 import { formatDateSeparator } from "../lib/date-utils";
 import { useDocumentManager } from "../hooks/useDocumentManager";
 import { AttachmentChip, type Attachment, type AttachmentStatus } from "./AttachmentChip";
 import { DocumentPreviewDrawer } from "./DocumentPreviewDrawer";
+import { AIMonitorPanel } from "./AIMonitorPanel";
 
 const getMessageDate = (createdAt: any): Date | null => {
   if (!createdAt) return null;
@@ -48,6 +49,7 @@ interface ChatViewportProps {
   onSpeak: (text: string, id: string) => void;
   onCopy: (text: string, id: string) => void;
   devScrollRef: React.RefObject<HTMLDivElement | null>;
+  aiMonitorData?: AIMonitorDTO | null;
 }
 
 const CAPABILITIES = [
@@ -86,7 +88,8 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
   copiedId,
   onSpeak,
   onCopy,
-  devScrollRef
+  devScrollRef,
+  aiMonitorData
 }) => {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -431,6 +434,12 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
           <div ref={devScrollRef} />
         </div>
       </div>
+
+      {/* AI Monitor Panel — collapsible execution details */}
+      <AIMonitorPanel data={aiMonitorData ?? null} />
+
+      {/* ── DEBUG: Log aiMonitorData received by ChatViewport ─────────── */}
+      {(() => { console.log("[AI Monitor DEBUG] ChatViewport aiMonitorData:", aiMonitorData); return null; })()}
 
       <div className="border-t border-gray-200 bg-white px-4 md:px-6 py-4">
         <div className="max-w-3xl mx-auto w-full">

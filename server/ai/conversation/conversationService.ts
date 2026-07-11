@@ -25,9 +25,13 @@ import { getUserFriendlyErrorMessage } from "../../utils/errors";
 import { memoryService } from "../../memory/service";
 import { ContextBuilder } from "../context";
 import { orchestrate } from "../orchestrator";
-import type { ChatResponse } from "../types";
+import { createAIMonitor } from "../monitor";
+import { getConfig } from "../../config/env";
+import type { ChatResponse, AIMonitorDataDTO } from "../types";
 import type { Persona, ConversationMessage } from "../types";
 import type { ChatAttachment } from "../../../shared/types";
+import type { AIMonitorCollector } from "../monitor/service";
+import type { ExecutionMode } from "../orchestrator/types";
 
 const logger = createLogger("ConversationService");
 
@@ -112,6 +116,81 @@ async function resolveAttachments(
 
   logger.info("[resolveAttachments] No attachments resolved");
   return undefined;
+}
+
+// ── Helper: Resolve provider info for AI Monitor ────────────────────
+
+/**
+ * Resolve the provider name and model name for the AI Monitor.
+ * Uses the response model name if available, falls back to config.
+ */
+function resolveProviderInfo(responseModel?: string): { name: string; model: string } {
+  const config = getConfig();
+  const failoverEnabled = process.env.AI_FAILOVER_ENABLED !== "false";
+
+  if (failoverEnabled) {
+    // With failover, we don't know which provider answered until after the call.
+    // The response model name tells us which provider was used.
+    if (responseModel) {
+      // Map known model prefixes to provider names
+      if (responseModel.includes("llama") || responseModel.includes("mixtral") || responseModel.includes("gemma")) {
+        return { name: "Groq", model: responseModel };
+      }
+      if (responseModel.includes("gemini")) {
+        return { name: "Gemini", model: responseModel };
+      }
+      // Default to the model name as-is
+      return { name: "AI", model: responseModel };
+    }
+    // Fallback: use the first configured provider
+    const priority = (process.env.AI_PROVIDER_PRIORITY || "groq,gemini,ollama").split(",")[0];
+    return { name: capitalize(priority), model: getModelForProvider(priority) };
+  }
+
+  // Single provider mode
+  const provider = config.aiProvider;
+  const modelName = provider === "groq"
+    ? config.groq.modelName
+    : config.ollama.modelName;
+  return { name: capitalize(provider), model: modelName };
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function getModelForProvider(provider: string): string {
+  const config = getConfig();
+  switch (provider) {
+    case "groq": return config.groq.modelName;
+    case "gemini": return config.gemini.modelName;
+    default: return config.ollama.modelName;
+  }
+}
+
+/**
+ * Map an ExecutionMode to a ConversationMode for the AI Monitor.
+ */
+function mapExecutionModeToConversationMode(
+  mode: ExecutionMode,
+  useMemory: boolean,
+  useRag: boolean,
+  useTools: boolean,
+  hasAttachments: boolean,
+): string {
+  // If attachments are present, RAG is always active
+  const ragActive = useRag || hasAttachments;
+  const memoryActive = useMemory;
+  const toolsActive = useTools;
+
+  if (memoryActive && ragActive && toolsActive) return "Hybrid";
+  if (memoryActive && ragActive) return "Memory + RAG";
+  if (ragActive && toolsActive) return "RAG + Tools";
+  if (memoryActive && toolsActive) return "Memory + Tools";
+  if (ragActive) return "RAG";
+  if (memoryActive) return "Memory";
+  if (toolsActive) return "Tool Mode";
+  return "Chat Only";
 }
 
 // ── Orchestrator ────────────────────────────────────────────────────
@@ -206,10 +285,73 @@ export async function handleNonStreaming(
     }
   }
 
+  // ── AI Monitor: Build metadata from the request lifecycle ─────────
+  const providerInfo = resolveProviderInfo(response.model);
+  const monitor = createAIMonitor(providerInfo.name, providerInfo.model);
+
+  // Set conversation mode based on execution plan and attachments
+  const conversationMode = mapExecutionModeToConversationMode(
+    plan.mode,
+    plan.useMemory,
+    plan.useRag || hasAttachments,
+    plan.useTools,
+    hasAttachments,
+  );
+  monitor.setMode(conversationMode as any);
+
+  // Record memory metadata from context builder
+  if (metadata.hasMemoryContext) {
+    monitor.recordMemory({
+      entryCount: metadata.memoryEntryCount,
+      avgConfidence: metadata.memoryAvgConfidence,
+    });
+  }
+
+  // Record RAG metadata from context builder
+  if (metadata.hasRagContext) {
+    monitor.recordRag({
+      activeDocCount: resolvedAttachments?.length ?? 0,
+      chunkCount: metadata.ragChunkCount,
+    });
+  }
+
+  // Record tool metadata from context builder
+  if (metadata.hasToolResult) {
+    monitor.recordTool({
+      executionCount: metadata.toolName ? 1 : 0,
+      toolNames: metadata.toolName ? [metadata.toolName] : [],
+    });
+  }
+
+  // End the monitor (captures latency)
+  monitor.end();
+  const monitorData = monitor.getData();
+
+  // Convert to DTO for the frontend
+  const aiMonitorDTO: AIMonitorDataDTO = {
+    provider: monitorData.provider.name,
+    model: monitorData.provider.model,
+    latencyMs: monitorData.latencyMs,
+    mode: monitorData.mode,
+    memory: monitorData.memory ? {
+      entryCount: monitorData.memory.entryCount,
+      avgConfidence: monitorData.memory.avgConfidence,
+    } : undefined,
+    rag: monitorData.rag ? {
+      activeDocCount: monitorData.rag.activeDocCount,
+      chunkCount: monitorData.rag.chunkCount,
+    } : undefined,
+    tools: monitorData.tools ? {
+      executionCount: monitorData.tools.executionCount,
+      toolNames: monitorData.tools.toolNames,
+    } : undefined,
+  };
+
   const chatResponse: ChatResponse = {
     replyText: parsed.replyText,
     mapAction: parsed.mapAction,
     searchSources: [],
+    aiMonitor: aiMonitorDTO,
   };
 
   logger.debug("Chat response generated", {
@@ -218,6 +360,7 @@ export async function handleNonStreaming(
     hasConversationId: !!conversationId,
     planMode: plan.mode,
     hasAttachments: hasAttachments,
+    aiMonitor: aiMonitorDTO,
   });
 
   return chatResponse;
@@ -338,12 +481,77 @@ export async function handleStreaming(
             }
           }
 
+          // ── DEBUG: AI Monitor creation ─────────────────────────────────────
+          console.log("[AI Monitor DEBUG] Starting monitor creation, chunk.model:", chunk.model);
+          const providerInfo = resolveProviderInfo(chunk.model);
+          const monitor = createAIMonitor(providerInfo.name, providerInfo.model);
+
+          // Set conversation mode based on execution plan and attachments
+          const conversationMode = mapExecutionModeToConversationMode(
+            plan.mode,
+            plan.useMemory,
+            plan.useRag || hasAttachments,
+            plan.useTools,
+            hasAttachments,
+          );
+          monitor.setMode(conversationMode as any);
+
+          // Record memory metadata from context builder
+          if (metadata.hasMemoryContext) {
+            monitor.recordMemory({
+              entryCount: metadata.memoryEntryCount,
+              avgConfidence: metadata.memoryAvgConfidence,
+            });
+          }
+
+          // Record RAG metadata from context builder
+          if (metadata.hasRagContext) {
+            monitor.recordRag({
+              activeDocCount: resolvedAttachments?.length ?? 0,
+              chunkCount: metadata.ragChunkCount,
+            });
+          }
+
+          // Record tool metadata from context builder
+          if (metadata.hasToolResult) {
+            monitor.recordTool({
+              executionCount: metadata.toolName ? 1 : 0,
+              toolNames: metadata.toolName ? [metadata.toolName] : [],
+            });
+          }
+
+          // End the monitor (captures latency)
+          monitor.end();
+          const monitorData = monitor.getData();
+
+          // Convert to DTO for the frontend
+          const aiMonitorDTO: AIMonitorDataDTO = {
+            provider: monitorData.provider.name,
+            model: monitorData.provider.model,
+            latencyMs: monitorData.latencyMs,
+            mode: monitorData.mode,
+            memory: monitorData.memory ? {
+              entryCount: monitorData.memory.entryCount,
+              avgConfidence: monitorData.memory.avgConfidence,
+            } : undefined,
+            rag: monitorData.rag ? {
+              activeDocCount: monitorData.rag.activeDocCount,
+              chunkCount: monitorData.rag.chunkCount,
+            } : undefined,
+            tools: monitorData.tools ? {
+              executionCount: monitorData.tools.executionCount,
+              toolNames: monitorData.tools.toolNames,
+            } : undefined,
+          };
+
           const chatResponse: ChatResponse = {
             replyText: parsed.replyText,
             mapAction: parsed.mapAction,
             searchSources: [],
+            aiMonitor: aiMonitorDTO,
           };
 
+          console.log("[AI Monitor DEBUG] Calling onDone with chatResponse");
           onDone(chatResponse);
         } catch {
           logger.warn("Failed to parse streamed response");

@@ -64,6 +64,36 @@ export interface ChatAttachment {
   filename: string;
 }
 
+/**
+ * AI Monitor data returned alongside the chat response.
+ * This is the frontend-facing shape of the metadata object.
+ */
+export interface AIMonitorDataDTO {
+  /** Provider name (e.g. "Groq", "Gemini", "Ollama"). */
+  provider: string;
+  /** Model name (e.g. "llama-3.3-70b-versatile"). */
+  model: string;
+  /** Total request duration in milliseconds. */
+  latencyMs: number;
+  /** Human-readable conversation mode. */
+  mode: string;
+  /** Memory metadata (undefined if memory was not used). */
+  memory?: {
+    entryCount: number;
+    avgConfidence: number;
+  };
+  /** RAG metadata (undefined if RAG was not used). */
+  rag?: {
+    activeDocCount: number;
+    chunkCount: number;
+  };
+  /** Tool metadata (undefined if no tools were executed). */
+  tools?: {
+    executionCount: number;
+    toolNames: string[];
+  };
+}
+
 /** Request body for `POST /api/chat`. */
 export interface ChatRequest {
   text: string;
@@ -78,6 +108,8 @@ export interface ChatResponse {
   replyText: string;
   mapAction: MapAction;
   searchSources?: string[];
+  /** AI Monitor metadata for the request (undefined for legacy responses). */
+  aiMonitor?: AIMonitorDataDTO;
 }
 
 /** Request body for `POST /api/summarize`. */

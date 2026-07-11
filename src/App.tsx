@@ -106,6 +106,7 @@ export default function App() {
     deleteSession,
     sendMessageToBot,
     devScrollRef,
+    aiMonitorData,
   } = useChatManager({
     persona,
     onBotReply: (replyText, msgId) => {
@@ -116,6 +117,9 @@ export default function App() {
       }
     },
   });
+
+  // ── DEBUG: Log aiMonitorData from hook ─────────────────────────────
+  console.log("[AI Monitor DEBUG] App.tsx aiMonitorData:", aiMonitorData);
 
   // Layout presentation controls
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
@@ -453,6 +457,7 @@ export default function App() {
             onSpeak={speakTextOutLoud}
             onCopy={copyToClipboard}
             devScrollRef={devScrollRef}
+            aiMonitorData={aiMonitorData}
           />
         </main>
 

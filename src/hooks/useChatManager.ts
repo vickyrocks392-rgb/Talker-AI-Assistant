@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { UserPersona } from "../types";
 import type { Conversation, Message } from "../types";
-import type { ChatAttachment } from "../lib/api";
+import type { ChatAttachment, AIMonitorDTO } from "../lib/api";
 import {
   fetchConversations,
   createConversation,
@@ -32,6 +32,7 @@ export const useChatManager = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [inputText, setInputText] = useState<string>("");
+  const [aiMonitorData, setAiMonitorData] = useState<AIMonitorDTO | null>(null);
 
   const devScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -247,6 +248,15 @@ export const useChatManager = ({
           () => {},
         );
 
+        // Capture AI Monitor data from the response
+        console.log("[AI Monitor DEBUG] useChatManager result.aiMonitor:", result.aiMonitor);
+        if (result.aiMonitor) {
+          setAiMonitorData(result.aiMonitor);
+          console.log("[AI Monitor DEBUG] useChatManager setAiMonitorData called");
+        } else {
+          console.log("[AI Monitor DEBUG] useChatManager result.aiMonitor is undefined");
+        }
+
         // After response, refresh from backend (source of truth)
         await refreshActiveConversation();
 
@@ -299,5 +309,6 @@ export const useChatManager = ({
     sendMessageToBot,
     devScrollRef,
     scrollToBottom,
+    aiMonitorData,
   };
 };

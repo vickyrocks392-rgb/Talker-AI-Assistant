@@ -36,10 +36,21 @@ export interface ConversationDetailDTO {
   messages: MessageDTO[];
 }
 
+export interface AIMonitorDTO {
+  provider: string;
+  model: string;
+  latencyMs: number;
+  mode: string;
+  memory?: { entryCount: number; avgConfidence: number };
+  rag?: { activeDocCount: number; chunkCount: number };
+  tools?: { executionCount: number; toolNames: string[] };
+}
+
 export interface ChatResponseDTO {
   replyText: string;
   mapAction: { type: "none" | "search" | "directions"; query?: string; directions?: unknown };
   searchSources?: string[];
+  aiMonitor?: AIMonitorDTO;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -182,14 +193,19 @@ export function sendChatMessageStream(
             if (data.token) {
               onToken(data.token);
             } else if (data.done) {
+              console.log("[AI Monitor DEBUG] SSE done event data:", JSON.stringify(data));
               finalResponse = {
                 replyText: data.replyText,
                 mapAction: data.mapAction,
                 searchSources: data.searchSources,
+                aiMonitor: data.aiMonitor,
               };
+              console.log("[AI Monitor DEBUG] finalResponse.aiMonitor:", finalResponse.aiMonitor);
             } else if (data.error) {
               reject(new Error(data.error));
               return;
+            } else if (!data.token && !data.done && !data.error) {
+              console.log("[AI Monitor DEBUG] Unhandled SSE event:", JSON.stringify(data));
             }
           }
         }

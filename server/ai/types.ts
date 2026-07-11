@@ -23,6 +23,7 @@ export type {
   ChatResponse,
   SummaryRequest,
   SummaryResponse,
+  AIMonitorDataDTO,
 } from "../../shared/types";
 
 import type { MapAction } from "../../shared/types";
