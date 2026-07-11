@@ -97,11 +97,12 @@ export class ContextBuilder {
       : [];
 
     // ── 3. RAG Context (conditional) ──────────────────────────────
-    const shouldUseRag = executionPlan ? executionPlan.useRag : true;
-    
-    const ragResult = shouldUseRag
-      ? await this.retrieveRagContext(text)
-      : null;
+    // RAG retrieval is NEVER performed in the non-attachment path.
+    // Knowledge Center documents must never participate in chat retrieval
+    // unless they are attached as active documents for the current conversation.
+    // The buildWithAttachments() method is the only path that performs RAG,
+    // and it scopes retrieval to the active document IDs only.
+    const ragResult = null;
 
     // ── 4. Tool Context (conditional) ─────────────────────────────
     const shouldUseTools = executionPlan ? executionPlan.useTools : true;
@@ -400,33 +401,6 @@ export class ContextBuilder {
     }
 
     return result;
-  }
-
-  /**
-   * Retrieve RAG context if available.
-   * Returns null if RAG is unavailable or no relevant chunks found.
-   */
-  private async retrieveRagContext(
-    text: string,
-  ): Promise<{ context: string; chunkCount: number; avgScore: number } | null> {
-    try {
-      const ragContext = await ragService.retrieveContext(text);
-
-      if (!ragContext) {
-        logger.debug("No RAG context retrieved");
-        return null;
-      }
-
-      logger.info(
-        `Retrieved RAG context: ${ragContext.chunkCount} chunks ` +
-        `(avg score: ${ragContext.avgScore.toFixed(3)})`,
-      );
-
-      return ragContext;
-    } catch (error) {
-      logger.error("RAG context retrieval failed", error);
-      return null;
-    }
   }
 
   /**

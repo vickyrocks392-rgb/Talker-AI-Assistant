@@ -221,8 +221,14 @@ class RagService {
     }
     // ── END compare guard ───────────────────────────────────────────
 
+    // ── Invariant 2: empty active documents guard ─────────────────────────
+    // If activeDocuments.length == 0, chat retrieval must terminate
+    // immediately. No Chroma query, no embedding lookup, no vector search.
     if (documentIds.length === 0) {
-      return this.retrieveContext(query);
+      logger.info(
+        `[Retrieval] Conversation: <unknown> Active Documents: [] Mode: active_only Blocked Reason: empty_active_documents Retrieved Document IDs: []`,
+      );
+      return null;
     }
 
     // Try to initialize if not already done
@@ -239,69 +245,36 @@ class RagService {
     }
 
     try {
-       // ── DEBUG: RagService document distribution ───────────────────────────
-       logger.info("=== RagService Debug ===");
-       logger.info("requested documentIds: " + documentIds.join(", "));
-       // ── END DEBUG ───────────────────────────────────────────────────────────
-
-       // Log the exact attachment array
-       logger.info(`Requested docs:`);
-       for (const id of documentIds) {
-         logger.info(`  - ${id}`);
-       }
-
        // Retrieve with document ID filtering passed to the retriever
        // The retriever will pass the filter to the vector store for Chroma metadata filtering
        const results = await this.retriever.retrieve(query, documentIds);
-
-       // Log every chunk with metadata
-       logger.info(`Retrieved chunks:`);
-       for (let i = 0; i < results.length; i++) {
-         const r = results[i];
-         const chunkDocId = r.document.metadata?.documentId as string | undefined;
-         const chunkFilename = r.document.metadata?.filename as string | undefined;
-         logger.info(
-           `  ${chunkFilename ?? "unknown"} -> documentId=${chunkDocId ?? "undefined"}, score=${r.score.toFixed(4)}`
-         );
-       }
-
-       // Log combined retrieval
-       const docChunks = new Map<string, number>();
-       for (const r of results) {
-         const filename = r.document.metadata?.filename as string | undefined;
-         if (filename) {
-           docChunks.set(filename, (docChunks.get(filename) || 0) + 1);
-         }
-       }
-       logger.info(`Combined retrieval: ${results.length} chunks total`);
-       for (const [filename, count] of docChunks) {
-         logger.info(`  ${filename} -> ${count} chunks`);
-       }
 
       if (results.length === 0) {
         logger.debug("No relevant chunks found in attached documents");
         return null;
       }
 
-      // Format the context
-      const context = this.formatContext(results);
+       // Format the context
+       const context = this.formatContext(results);
 
-      // ── DEBUG: Log the actual RAG context content ───────────────────────────────
-      logger.info("RAG context content preview: " + context.substring(0, 500) + "...");
-      // ── END DEBUG ───────────────────────────────────────────────────────────
+       const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
 
-      const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
+       const retrievedIds = [...new Set(results.map(r => r.document.metadata?.documentId as string | undefined).filter(Boolean))];
 
-      logger.info(
-        `Retrieved ${results.length} chunks from attachment scope ` +
-        `(avg score: ${avgScore.toFixed(3)})`,
-      );
+       logger.info(
+         `[Retrieval] Conversation: <unknown> Active Documents: [${documentIds.join(", ")}] Mode: active_only Blocked Reason: none Retrieved Document IDs: [${retrievedIds.join(", ")}]`,
+       );
 
-      return {
-        context,
-        chunkCount: results.length,
-        avgScore,
-      };
+       logger.info(
+         `Retrieved ${results.length} chunks from attachment scope ` +
+         `(avg score: ${avgScore.toFixed(3)})`,
+       );
+
+       return {
+         context,
+         chunkCount: results.length,
+         avgScore,
+       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error(`Attachment-scoped RAG retrieval failed: ${errorMessage}`);
