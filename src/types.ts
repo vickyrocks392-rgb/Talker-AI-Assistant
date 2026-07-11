@@ -10,10 +10,11 @@ import type {
   Persona,
   MapAction,
   ConversationRole,
+  ChatAttachment,
 } from "../shared/types";
 
 // Re-export shared types so existing import paths keep working.
-export type { Persona, MapAction, ConversationRole };
+export type { Persona, MapAction, ConversationRole, ChatAttachment };
 
 /**
  * Firestore user profile document.
@@ -71,6 +72,8 @@ export interface Message {
   content: string;
   createdAt: string;
   ragContext?: RagContext;
+  /** Optional file attachments associated with this message */
+  attachments?: ChatAttachment[];
 }
 
 // Global window extensions for Web Speech API standard interfaces

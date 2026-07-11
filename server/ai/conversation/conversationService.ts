@@ -56,6 +56,64 @@ export interface ConversationServiceResult {
  */
 const contextBuilder = new ContextBuilder();
 
+// ── Helper: Resolve attachments from request or conversation active documents ──
+
+/**
+ * Resolves attachments to use for the request.
+ * If request has attachments, uses those and updates conversation active documents.
+ * If no attachments but conversation has active documents, falls back to those.
+ * 
+ * @param request - The conversation service request
+ * @returns The resolved attachments to use (or undefined if none)
+ */
+async function resolveAttachments(
+  request: ConversationServiceRequest,
+): Promise<ChatAttachment[] | undefined> {
+  const { conversationId, attachments } = request;
+
+  logger.info(`[resolveAttachments] Conversation ID: ${conversationId}`);
+  logger.info(`[resolveAttachments] Incoming request attachments: ${attachments ? JSON.stringify(attachments.map((a) => a.documentId)) : "none"}`);
+
+  // If request has attachments, use them and update conversation active documents
+  if (attachments && attachments.length > 0) {
+    // ── DEBUG: Active conversation documents ───────────────────────────────
+    logger.info("[resolveAttachments] Request has attachments:");
+    for (const a of attachments) {
+      logger.info(`- ${a.filename} (${a.documentId})`);
+    }
+    // ── END DEBUG ───────────────────────────────────────────────────────────
+
+    // Persist to conversation for future fallback and get the merged list
+    if (conversationId) {
+      logger.info(`[resolveAttachments] Before setActiveDocuments - conversation active docs will be merged with incoming`);
+      const mergedDocs = memoryService.setActiveDocuments(conversationId, attachments);
+      logger.info(`[resolveAttachments] After setActiveDocuments - merged docs: ${JSON.stringify(mergedDocs.map(d => d.documentId))}`);
+      // Return the merged list directly from setActiveDocuments
+      return mergedDocs;
+    }
+    // Fall back to the request attachments if no conversationId
+    return attachments;
+  }
+
+  // No attachments in request - check conversation active documents
+  if (conversationId) {
+    const conversation = memoryService.getConversation(conversationId);
+    const activeDocs = conversation?.activeDocuments;
+
+    if (activeDocs && activeDocs.length > 0) {
+      // ── DEBUG: Falling back to active conversation documents ─────────────────
+      logger.info("[resolveAttachments] Falling back to active conversation documents");
+      logger.info(`[resolveAttachments] Active docs: ${JSON.stringify(activeDocs.map((a) => a.documentId))}`);
+      // ── END DEBUG ───────────────────────────────────────────────────────────
+
+      return activeDocs;
+    }
+  }
+
+  logger.info("[resolveAttachments] No attachments resolved");
+  return undefined;
+}
+
 // ── Orchestrator ────────────────────────────────────────────────────
 
 /**
@@ -72,10 +130,22 @@ const contextBuilder = new ContextBuilder();
 export async function handleNonStreaming(
   request: ConversationServiceRequest,
 ): Promise<ChatResponse> {
-  const { text, conversationId, persona, attachments } = request;
+  const { text, conversationId, persona } = request;
+
+  // Resolve attachments (from request or conversation active documents)
+  const resolvedAttachments = await resolveAttachments(request);
 
   // Step 1: Orchestrate — determine which context sources to use
   const { plan } = await orchestrate(text);
+
+  // ── DEBUG: ConversationService entry point ─────────────────────────────
+  logger.info("=== ConversationService Debug ===");
+  logger.info("attachments.length: " + (resolvedAttachments?.length ?? 0));
+  if (resolvedAttachments && resolvedAttachments.length > 0) {
+    logger.info("documentIds: " + resolvedAttachments.map((a) => a.documentId).join(", "));
+    logger.info("filenames: " + resolvedAttachments.map((a) => a.filename).join(", "));
+  }
+  // ── END DEBUG ───────────────────────────────────────────────────────────
 
   logger.debug("Execution plan", {
     mode: plan.mode,
@@ -84,7 +154,7 @@ export async function handleNonStreaming(
     useTools: plan.useTools,
     tool: plan.tool,
     reason: plan.reason,
-    hasAttachments: !!attachments?.length,
+    hasAttachments: !!resolvedAttachments?.length,
   });
 
   // Step 2: Build context using the Context Builder
@@ -96,11 +166,11 @@ export async function handleNonStreaming(
     executionPlan: plan,
   };
 
-  const hasAttachments = attachments && attachments.length > 0;
+  const hasAttachments = resolvedAttachments && resolvedAttachments.length > 0;
 
   // If attachments are present, use attachment-aware context building
   const { messages, metadata } = hasAttachments
-    ? await contextBuilder.buildWithAttachments(options, attachments)
+    ? await contextBuilder.buildWithAttachments(options, resolvedAttachments)
     : await contextBuilder.build(options);
 
   logger.debug("Context built", {
@@ -110,7 +180,7 @@ export async function handleNonStreaming(
     hasTool: metadata.hasToolResult,
     historyCount: metadata.historyMessageCount,
     planMode: plan.mode,
-    attachmentsCount: attachments?.length ?? 0,
+    attachmentsCount: resolvedAttachments?.length ?? 0,
   });
 
   // Step 3: Call AI provider
@@ -118,9 +188,9 @@ export async function handleNonStreaming(
   const response = await provider.chat({ messages });
   const parsed = parseChatResponse(response.message.content);
 
-  // Step 4: Persist to memory
+  // Step 4: Persist to memory (with attachments for user message)
   if (conversationId) {
-    memoryService.saveMessage(conversationId, "user", text);
+    memoryService.saveMessage(conversationId, "user", text, resolvedAttachments);
     memoryService.saveMessage(conversationId, "assistant", parsed.replyText);
   }
 
@@ -158,7 +228,10 @@ export async function handleStreaming(
   onDone: (result: ChatResponse) => void,
   onError: (error: string) => void,
 ): Promise<void> {
-  const { text, conversationId, persona, attachments } = request;
+  const { text, conversationId, persona } = request;
+
+  // Resolve attachments (from request or conversation active documents)
+  const resolvedAttachments = await resolveAttachments(request);
 
   // Step 1: Orchestrate — determine which context sources to use
   const { plan } = await orchestrate(text);
@@ -170,7 +243,7 @@ export async function handleStreaming(
     useTools: plan.useTools,
     tool: plan.tool,
     reason: plan.reason,
-    hasAttachments: !!attachments?.length,
+    hasAttachments: !!resolvedAttachments?.length,
   });
 
   // Step 2: Build context using the Context Builder
@@ -182,14 +255,14 @@ export async function handleStreaming(
     executionPlan: plan,
   };
 
-  const hasAttachments = attachments && attachments.length > 0;
+  const hasAttachments = resolvedAttachments && resolvedAttachments.length > 0;
 
   let messages;
   let metadata;
 
   try {
     const result = hasAttachments
-      ? await contextBuilder.buildWithAttachments(options, attachments)
+      ? await contextBuilder.buildWithAttachments(options, resolvedAttachments)
       : await contextBuilder.build(options);
     messages = result.messages;
     metadata = result.metadata;
@@ -206,7 +279,7 @@ export async function handleStreaming(
     hasTool: metadata.hasToolResult,
     historyCount: metadata.historyMessageCount,
     planMode: plan.mode,
-    attachmentsCount: attachments?.length ?? 0,
+    attachmentsCount: resolvedAttachments?.length ?? 0,
   });
 
   // Step 3: Call AI provider with streaming
@@ -228,17 +301,18 @@ export async function handleStreaming(
         try {
           const parsed = parseChatResponse(fullContent);
 
-          // Step 4: Persist to memory after successful stream completion
+          // Step 4: Persist to memory after successful stream completion (with attachments for user message)
           if (conversationId) {
-            memoryService.saveMessage(conversationId, "user", text);
+            memoryService.saveMessage(conversationId, "user", text, resolvedAttachments);
             memoryService.saveMessage(conversationId, "assistant", parsed.replyText);
-            
+
             logger.debug("Messages persisted to memory", {
               conversationId,
               userMessage: text,
               assistantMessage: parsed.replyText,
               replyLength: parsed.replyText.length,
               mapType: parsed.mapAction.type,
+              attachmentsCount: resolvedAttachments?.length ?? 0,
             });
           }
 

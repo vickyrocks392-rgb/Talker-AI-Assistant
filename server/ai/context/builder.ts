@@ -203,34 +203,43 @@ export class ContextBuilder {
    * @param attachments - Array of attached documents (documentId + filename).
    * @returns The assembled context with metadata.
    */
-  async buildWithAttachments(
-    options: ContextBuilderOptions,
-    attachments: ChatAttachment[],
-  ): Promise<ContextBuilderResult> {
-    const { text, conversationId, history, persona, executionPlan } = options;
+   async buildWithAttachments(
+     options: ContextBuilderOptions,
+     attachments: ChatAttachment[],
+   ): Promise<ContextBuilderResult> {
+     const { text, conversationId, history, persona, executionPlan } = options;
 
-    // ── 1. System Prompt ──────────────────────────────────────────
-    const baseSystemPrompt = createChatSystemPrompt(persona);
+     // ── DEBUG: ContextBuilder entry point ───────────────────────────────
+     logger.info("=== ContextBuilder Debug ===");
+     logger.info("attachments received: " + attachments.length);
+     // ── END DEBUG ───────────────────────────────────────────────────────────
 
-    // Inject attachment metadata into the system prompt
-    const attachmentNames = attachments.map((a) => a.filename).join(", ");
-    const attachmentHint =
-      `\n\nAttached Documents: ${attachmentNames}\n` +
-      `This message refers to these attached documents unless explicitly stated otherwise. ` +
-      `Pronouns such as "this", "it", "the document", "the file" refer to the attached documents.`;
+     // ── 1. System Prompt ──────────────────────────────────────────
+     const baseSystemPrompt = createChatSystemPrompt(persona);
 
-    const systemPrompt = baseSystemPrompt + attachmentHint;
+     // Inject attachment metadata into the system prompt
+     const attachmentNames = attachments.map((a) => a.filename).join(", ");
+     const attachmentHint =
+       `\n\nAttached Documents: ${attachmentNames}\n` +
+       `This message refers to these attached documents unless explicitly stated otherwise. ` +
+       `Pronouns such as "this", "it", "the document", "the file" refer to the attached documents.`;
 
-    // ── 2. Conversation Memory (conditional) ──────────────────────
-    const shouldUseMemory = executionPlan ? executionPlan.useMemory : true;
-    const historyMessages = shouldUseMemory
-      ? this.loadHistory(conversationId, history)
-      : [];
+     const systemPrompt = baseSystemPrompt + attachmentHint;
 
-    // ── 3. RAG Context (conditional, scoped to attachments) ───────
-    const documentIds = attachments
-      .filter((a) => a.documentId)
-      .map((a) => a.documentId);
+     // ── 2. Conversation Memory (conditional) ──────────────────────
+     const shouldUseMemory = executionPlan ? executionPlan.useMemory : true;
+     const historyMessages = shouldUseMemory
+       ? this.loadHistory(conversationId, history)
+       : [];
+
+     // ── 3. RAG Context (conditional, scoped to attachments) ───────
+     const documentIds = attachments
+       .filter((a) => a.documentId)
+       .map((a) => a.documentId);
+
+     // ── DEBUG: Document IDs extracted ───────────────────────────────────
+     logger.info("documentIds extracted: " + documentIds.join(", "));
+     // ── END DEBUG ───────────────────────────────────────────────────────────
 
     // If attachments exist, always run attachment-scoped retrieval
     // regardless of what the orchestration planner decided.
@@ -247,9 +256,18 @@ export class ContextBuilder {
       `Received attachments: ${attachmentNames}`,
     );
 
+    // ── DEBUG: RAG context retrieval ───────────────────────────────────────
+    logger.info("ragEnabled: " + shouldUseRag);
+    logger.info("ragContextLength (documentIds): " + documentIds.length);
+    // ── END DEBUG ───────────────────────────────────────────────────────────
+
     const ragResult = shouldUseRag
       ? await this.retrieveRagContextForAttachments(text, documentIds)
       : null;
+
+    // ── DEBUG: RAG result received ───────────────────────────────────────────
+    logger.info("retrievedChunks.length: " + (ragResult?.chunkCount ?? 0));
+    // ── END DEBUG ───────────────────────────────────────────────────────────
 
     // ── 4. Tool Context (conditional) ─────────────────────────────
     const shouldUseTools = executionPlan ? executionPlan.useTools : true;
@@ -314,6 +332,21 @@ export class ContextBuilder {
       role: s.role,
       content: s.content,
     }));
+
+    // ── DEBUG: Prompt assembly ───────────────────────────────────────
+    const systemPromptMsg = messages.find((m) => m.role === "system" && m.content.includes("Attached Documents:"));
+    const ragContextMsg = messages.find((m) => m.role === "system" && m.content.includes("Retrieved Context:"));
+    const historyCount = messages.filter((m) => m.role === "user" || m.role === "assistant").length;
+    
+    logger.info("=== Prompt Assembly Debug ===");
+    logger.info("System prompt: " + (systemPromptMsg ? "yes" : "no"));
+    logger.info("History messages: " + historyCount);
+    logger.info("RAG message: " + (ragContextMsg ? "yes" : "no"));
+    if (ragContextMsg) {
+      logger.info("RAG chars: " + ragContextMsg.content.length);
+    }
+    logger.info("Total messages: " + messages.length);
+    // ── END DEBUG ───────────────────────────────────────────────────────────
 
     // ── Build metadata ────────────────────────────────────────────
     const metadata: ContextMetadata = {

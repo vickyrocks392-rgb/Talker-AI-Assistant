@@ -142,7 +142,7 @@ export interface AIProvider {
 
 /** Configuration for a supported model. */
 export interface ModelConfig {
-  provider: "ollama" | "groq";
+  provider: "ollama" | "groq" | "gemini";
   name: string;
   contextLength?: number;
 }

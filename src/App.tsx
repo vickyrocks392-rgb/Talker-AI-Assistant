@@ -253,6 +253,7 @@ export default function App() {
                   messages={messages}
                   onCreateSession={createNewSession}
                   onDeleteSession={deleteSession}
+                  loading={loading}
                 />
               </div>
 

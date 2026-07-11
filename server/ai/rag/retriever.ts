@@ -74,43 +74,146 @@ export class RagRetriever implements Retriever {
    * @param documentIds - Optional array of document IDs to scope retrieval to.
    * @returns Array of search results, ordered by relevance (highest score first).
    */
-  async retrieve(query: string, documentIds?: string[]): Promise<SearchResult[]> {
-    logger.debug(`Retrieving for query: "${query.slice(0, 80)}..."`);
+   async retrieve(query: string, documentIds?: string[]): Promise<SearchResult[]> {
+     // ── DEBUG: Retriever entry point ───────────────────────────────────────
+     logger.info("=== Retriever Debug ===");
+     if (documentIds && documentIds.length > 0) {
+       logger.info("single-document mode or multi-document mode: " + (documentIds.length === 1 ? "single-document" : "multi-document"));
+     } else {
+       logger.info("single-document mode or multi-document mode: none (unfiltered)");
+     }
+     // ── END DEBUG ───────────────────────────────────────────────────────────
 
-    // Step 1: Embed the query
-    const queryVector = await this.embeddings.embedQuery(query);
+     logger.debug(`Retrieving for query: "${query.slice(0, 80)}..."`);
 
-    logger.debug(`Query embedded: ${queryVector.length} dimensions`);
+     // Log the exact attachment array
+     if (documentIds && documentIds.length > 0) {
+       logger.info(`Requested docs: ${documentIds.length} attachment(s)`);
+       for (const id of documentIds) {
+         logger.info(`  - ${id}`);
+       }
+     }
 
-    // Step 2: Search the vector store (with optional document ID filter)
-    // Chroma requires operators like $eq (single) or $in (multiple)
-    const filter = documentIds && documentIds.length > 0
-      ? {
-          documentId: {
-            ...(documentIds.length === 1
-              ? { $eq: documentIds[0] }
-              : { $in: documentIds }),
-          },
-        }
-      : undefined;
-    
-    const results = await this.vectorStore.similaritySearch(query, this.config.k, filter);
+     // Step 1: Embed the query
+     await this.embeddings.embedQuery(query);
 
-    // Step 3: Filter by score threshold
-    const filtered = results.filter(
-      (result) => result.score >= this.config.scoreThreshold,
-    );
+     let results: SearchResult[];
 
-    // Step 4: Sort by score descending (most relevant first)
-    const sorted = filtered.sort((a, b) => b.score - a.score);
+     // Step 2: Search the vector store
+     // For multiple document IDs, use individual queries and merge (Chroma $in may not work)
+     if (documentIds && documentIds.length > 0) {
+       if (documentIds.length === 1) {
+         // Single document: use direct filter
+         const filter = {
+           documentId: { $eq: documentIds[0] },
+         };
+         logger.debug(`Retrieval filter structure: ${JSON.stringify(filter)}`);
+         
+         try {
+           results = await this.vectorStore.similaritySearch(query, this.config.k, filter);
+         } catch (error) {
+           const errorMessage = error instanceof Error ? error.message : "Unknown error";
+           logger.error(`Vector store similarity search failed: ${errorMessage}`);
+           logger.error(`Filter that caused failure: ${JSON.stringify(filter)}`);
+           throw error;
+         }
+       } else {
+         // Multiple documents: perform independent retrieval for each document
+         // This ensures each document contributes chunks to the result set
+         logger.info(`Multiple document retrieval mode enabled`);
+         
+         const allResults: SearchResult[] = [];
+         const perDocResults = new Map<string, SearchResult[]>();
+         
+         for (const docId of documentIds) {
+           const filter = { documentId: { $eq: docId } };
+           logger.debug(`Querying for document: ${docId}`);
+           
+           try {
+             const docResults = await this.vectorStore.similaritySearch(query, this.config.k, filter);
+             perDocResults.set(docId, docResults);
+             allResults.push(...docResults);
+             logger.debug(`Document ${docId}: retrieved ${docResults.length} chunks`);
+           } catch (error) {
+             const errorMessage = error instanceof Error ? error.message : "Unknown error";
+             logger.warn(`Failed to retrieve for document ${docId}: ${errorMessage}`);
+           }
+         }
+         
+         // Deduplicate by documentId + chunkIndex
+         const seenKeys = new Set<string>();
+         const deduplicatedResults: SearchResult[] = [];
+         for (const result of allResults) {
+           const docId = result.document.metadata?.documentId as string | undefined;
+           const chunkIndex = result.document.metadata?.chunkIndex as number | undefined;
+           const dedupeKey = `${docId ?? "unknown"}:${chunkIndex ?? "unknown"}`;
+           
+           if (!seenKeys.has(dedupeKey)) {
+             seenKeys.add(dedupeKey);
+             deduplicatedResults.push(result);
+           }
+         }
+         
+         // Sort by score descending (most relevant first)
+         const sortedResults = deduplicatedResults.sort((a, b) => b.score - a.score);
+         
+         results = sortedResults;
+         
+         // Log retrieval results per document
+         for (const [docId, docResults] of perDocResults) {
+           const filenames = docResults
+             .map(r => r.document.metadata?.filename as string | undefined)
+             .filter((f): f is string => !!f);
+           const uniqueFilenames = [...new Set(filenames)];
+           logger.info(`  ${uniqueFilenames.join(", ")} -> ${docResults.length} chunks`);
+         }
+         
+         logger.info(`Merged retrieval: ${results.length} chunks total`);
+       }
+     } else {
+       // No filter - perform standard search
+       results = await this.vectorStore.similaritySearch(query, this.config.k);
+     }
 
-    // Limit to k results
-    const topK = sorted.slice(0, this.config.k);
+     // Log every retrieved chunk with metadata
+     logger.debug(`Retrieved ${results.length} chunks total`);
+     for (let i = 0; i < results.length; i++) {
+       const r = results[i];
+       const chunkDocId = r.document.metadata?.documentId as string | undefined;
+       const chunkFilename = r.document.metadata?.filename as string | undefined;
+       logger.debug(
+         `Chunk ${i + 1}:\n` +
+         `  documentId=${chunkDocId ?? "undefined"}\n` +
+         `  filename=${chunkFilename ?? "undefined"}\n` +
+         `  score=${r.score.toFixed(4)}`
+       );
+     }
 
-    logger.debug(
-      `Retrieved ${results.length} results, ${topK.length} passed threshold ${this.config.scoreThreshold}`,
-    );
+     // Step 3: Filter by score threshold
+     const filtered = results.filter(
+       (result) => result.score >= this.config.scoreThreshold,
+     );
 
-    return topK;
-  }
+     // Step 4: Sort by score descending (most relevant first)
+     const sorted = filtered.sort((a, b) => b.score - a.score);
+
+     // For multiple documents, we want to return more chunks to cover all documents
+     // Calculate the limit: for multiple docs, use k * numDocs to ensure coverage
+     const limit = documentIds && documentIds.length > 1
+       ? this.config.k * documentIds.length
+       : this.config.k;
+
+     // Limit to k results (or k * numDocs for multiple documents)
+     const topK = sorted.slice(0, limit);
+
+     // ── DEBUG: Retriever results returned ───────────────────────────────────
+     logger.info("results returned: " + topK.length);
+     // ── END DEBUG ───────────────────────────────────────────────────────────
+
+     logger.debug(
+       `Retrieved ${results.length} results, ${topK.length} passed threshold ${this.config.scoreThreshold}`,
+     );
+
+     return topK;
+   }
 }

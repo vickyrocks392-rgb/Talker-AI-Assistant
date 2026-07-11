@@ -1,10 +1,12 @@
 import React from "react";
-import { Copy, Check, Volume2, Square, RefreshCw, Share2 } from "lucide-react";
+import { Copy, Check, Volume2, Square } from "lucide-react";
 import { motion } from "motion/react";
 import type { Message } from "../types";
 import { formatMessageTime } from "../lib/date-utils";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { RagIndicator } from "./RagIndicator";
+import { AttachmentMessageBubble } from "./AttachmentMessageBubble";
+import type { ChatAttachment } from "../lib/api";
 
 interface MessageItemProps {
   msg: Message;
@@ -13,6 +15,8 @@ interface MessageItemProps {
   copiedId: string | null;
   onSpeak: (text: string, id: string) => void;
   onCopy: (text: string, id: string) => void;
+  attachments?: ChatAttachment[];
+  onPreviewAttachment?: (documentId: string) => void;
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({
@@ -21,7 +25,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   speakingMessageId,
   copiedId,
   onSpeak,
-  onCopy
+  onCopy,
+  attachments,
+  onPreviewAttachment
 }) => {
   const isUser = msg.role === "user";
   const hasCodeBlocks = msg.content.includes("```");
@@ -30,14 +36,23 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={`flex flex-col ${isUser ? "items-end" : "items-start"} mb-6 w-full`}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className={`flex flex-col ${isUser ? "items-end" : "items-start"} mb-6 w-full message-fade-in`}
     >
       {/* User message */}
       {isUser ? (
         <div className="max-w-[80%] md:max-w-[70%]">
-          <div className="bg-red-600 text-white px-4 py-3 rounded-2xl rounded-tr-sm shadow-sm">
-            <p className="text-sm leading-relaxed">{msg.content}</p>
+          <div className="bg-red-600 text-white px-4 py-3 rounded-2xl rounded-tr-sm shadow-sm hover:shadow-md transition-shadow duration-200">
+            {attachments && attachments.length > 0 && (
+              <AttachmentMessageBubble
+                attachments={attachments}
+                onPreview={onPreviewAttachment}
+                disabled={!onPreviewAttachment}
+              />
+            )}
+            {msg.content && (
+              <p className="text-sm leading-relaxed">{msg.content}</p>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-1.5 mr-1 select-none text-[11px] text-gray-500">
             <span>You</span>
@@ -61,7 +76,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             />
           )}
           
-          <div className="bg-white border border-gray-200 p-5 rounded-2xl rounded-tl-sm shadow-sm">
+          <div className="bg-white border border-gray-200 p-5 rounded-2xl rounded-tl-sm shadow-sm hover:shadow-md hover:border-gray-300 transition-all duration-200">
             {/* Answer text */}
             {hasCodeBlocks && msg.content.trim().startsWith("```") && (
               <p className="text-sm text-gray-600 mb-3">Here's a code example:</p>
@@ -74,10 +89,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100">
               <button
                 onClick={() => onSpeak(msg.content, msg.id)}
-                className={`px-3 py-1.5 rounded-lg border cursor-pointer transition text-xs font-medium flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg border cursor-pointer transition-all duration-200 text-xs font-medium flex items-center gap-1.5 button-press ${
                   speakingMessageId === msg.id
                     ? "bg-red-50 border-red-200 text-red-700"
-                    : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300"
+                    : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:scale-105"
                 }`}
                 title={speakingMessageId === msg.id ? "Stop speaking" : "Read aloud"}
               >
@@ -89,7 +104,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
               </button>
               <button
                 onClick={() => onCopy(msg.content, msg.id)}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 cursor-pointer transition text-xs font-medium flex items-center gap-1.5 bg-white"
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 cursor-pointer transition-all duration-200 text-xs font-medium flex items-center gap-1.5 bg-white button-press"
                 title="Copy text"
               >
                 {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-red-600" /> : <Copy className="w-3.5 h-3.5" />}

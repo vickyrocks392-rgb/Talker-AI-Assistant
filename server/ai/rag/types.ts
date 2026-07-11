@@ -144,6 +144,8 @@ export interface VectorStore {
   addDocuments(documents: RagDocument[]): Promise<void>;
   /** Search for documents similar to a query embedding. */
   similaritySearch(query: string, k?: number, filter?: Record<string, unknown>): Promise<SearchResult[]>;
+  /** Delete all vectors belonging to a specific document (by documentId). */
+  deleteDocument(documentId: string): Promise<void>;
   /** Delete all documents from the store. */
   deleteAll(): Promise<void>;
 }

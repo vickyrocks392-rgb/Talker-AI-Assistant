@@ -94,6 +94,9 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
   const [previewDocumentId, setPreviewDocumentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prevMessagesLengthRef = useRef(messages.length);
+  
+  // Store attachments per message ID to preserve them across backend refreshes
+  const messageAttachmentsRef = useRef<Map<string, ChatAttachment[]>>(new Map());
 
   // ── Build attachment payload from current indexed attachments ──────
   // Converts local Attachment objects to ChatAttachment for API requests
@@ -288,8 +291,17 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
   const handleSend = useCallback(() => {
     if (!inputText.trim() || loading) return;
     const payload = buildAttachmentPayload();
+    
+    // Store attachments for the optimistic message before clearing
+    if (payload.length > 0 && messages.length >= 0) {
+      const nextMsgId = "temp_" + Math.random().toString(36).substring(2, 11);
+      messageAttachmentsRef.current.set(nextMsgId, payload);
+    }
+    
     onSendMessage(inputText, payload.length > 0 ? payload : undefined);
-  }, [inputText, loading, onSendMessage, buildAttachmentPayload]);
+    // Clear attachments after sending
+    setAttachments([]);
+  }, [inputText, loading, onSendMessage, buildAttachmentPayload, messages.length]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
@@ -377,10 +389,17 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                   );
                 }
               }
+              // Use attachments from the message object if available, otherwise fall back to current attachments
+              const messageAttachments = msg.role === "user" && msg.attachments && msg.attachments.length > 0
+                ? msg.attachments
+                : [];
+              
               elements.push(
                 <MessageItem key={msg.id || index} msg={msg} index={index}
                   speakingMessageId={speakingMessageId} copiedId={copiedId}
-                  onSpeak={onSpeak} onCopy={onCopy} />
+                  onSpeak={onSpeak} onCopy={onCopy}
+                  attachments={messageAttachments.length > 0 ? messageAttachments : undefined}
+                  onPreviewAttachment={handleOpenPreview} />
               );
               if (currentDate) lastDate = currentDate;
             });
@@ -443,34 +462,61 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
           </AnimatePresence>
 
           <div className="flex items-end gap-2">
-            <button type="button" onClick={handlePaperclipClick}
-              className="w-10 h-10 rounded-xl flex items-center justify-center transition border cursor-pointer flex-shrink-0 bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600"
+            <button 
+              type="button" 
+              onClick={handlePaperclipClick}
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 border cursor-pointer flex-shrink-0 bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600 hover:scale-105 button-press"
               title="Attach document"
+              aria-label="Attach document"
             >
               <Paperclip className="w-5 h-5" />
             </button>
-            <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md,.docx,.csv" onChange={handleFileSelect} className="hidden" />
+            <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md,.docx,.csv" onChange={handleFileSelect} className="hidden" aria-hidden="true" />
 
-            <button type="button" onClick={isListening ? onStopVoiceCapture : onStartVoiceCapture}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition border cursor-pointer flex-shrink-0 ${
-                isListening ? "bg-red-600 text-white border-red-600 shadow-sm" : "bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600"
+            <button 
+              type="button" 
+              onClick={isListening ? onStopVoiceCapture : onStartVoiceCapture}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 border cursor-pointer flex-shrink-0 button-press ${
+                isListening 
+                  ? "bg-red-600 text-white border-red-600 shadow-sm hover:bg-red-700" 
+                  : "bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600 hover:scale-105"
               }`}
               title={isListening ? "Stop listening" : "Start voice input"}
+              aria-label={isListening ? "Stop listening" : "Start voice input"}
             >
               {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </button>
 
             <div className="flex-1 relative">
-              <textarea value={inputText} onChange={(e) => onInputTextChange(e.target.value)} onKeyDown={handleKeyDown}
-                placeholder="Message Talker AI..." rows={1}
-                className="w-full bg-white border border-gray-300 focus:border-red-500 rounded-xl py-3 pl-4 pr-12 text-sm text-gray-900 focus:outline-none transition resize-none placeholder-gray-500"
+              <textarea 
+                value={inputText} 
+                onChange={(e) => onInputTextChange(e.target.value)} 
+                onKeyDown={handleKeyDown}
+                placeholder="Message Talker AI..." 
+                rows={1}
+                className="w-full bg-white border border-gray-300 focus:border-red-500 rounded-xl py-3 pl-4 pr-14 text-sm text-gray-900 focus:outline-none transition-all duration-200 resize-none placeholder-gray-500 custom-scrollbar"
                 disabled={loading}
-                onInput={(e) => { const t = e.currentTarget; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 200) + "px"; }}
+                onInput={(e) => { 
+                  const t = e.currentTarget; 
+                  t.style.height = "auto"; 
+                  t.style.height = Math.min(t.scrollHeight, 200) + "px"; 
+                }}
+                style={{ 
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'rgb(156, 163, 175) transparent'
+                }}
+                aria-label="Message input"
               />
-              <button onClick={handleSend} disabled={loading || !inputText.trim()}
-                className={`absolute right-2 bottom-2 w-8 h-8 rounded-lg flex items-center justify-center transition cursor-pointer ${
-                  inputText.trim() && !loading ? "bg-red-600 text-white hover:bg-red-700 shadow-sm" : "bg-gray-100 text-gray-400 cursor-not-allowed"
+              <button 
+                onClick={handleSend} 
+                disabled={loading || !inputText.trim()}
+                className={`absolute right-2 bottom-2 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer button-press ${
+                  inputText.trim() && !loading 
+                    ? "bg-red-600 text-white hover:bg-red-700 hover:scale-110 shadow-sm" 
+                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
                 }`}
+                aria-label="Send message"
+                type="button"
               >
                 <ArrowRight className="w-4 h-4" />
               </button>
@@ -478,10 +524,10 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
           </div>
 
           <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-gray-500">
-            <span className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Enter</span>
+            <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Enter</kbd>
             <span>to send</span>
             <span className="text-gray-300">•</span>
-            <span className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Shift + Enter</span>
+            <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Shift + Enter</kbd>
             <span>for new line</span>
           </div>
         </div>

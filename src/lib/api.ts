@@ -16,12 +16,19 @@ export interface ConversationDTO {
   updatedAt: string;
 }
 
+export interface ChatAttachment {
+  documentId: string;
+  filename: string;
+}
+
 export interface MessageDTO {
   id: string;
   conversationId: string;
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  /** Optional file attachments associated with this message */
+  attachments?: ChatAttachment[];
 }
 
 export interface ConversationDetailDTO {
@@ -95,11 +102,6 @@ export function deleteConversation(id: string): Promise<void> {
 }
 
 // ── Chat API ─────────────────────────────────────────────────────────
-
-export interface ChatAttachment {
-  documentId: string;
-  filename: string;
-}
 
 export interface ChatRequestParams {
   text: string;

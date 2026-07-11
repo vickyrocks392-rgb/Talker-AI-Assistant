@@ -95,13 +95,14 @@ export const useChatManager = ({
         const detail = await getConversation(activeConversationId);
         if (cancelled) return;
 
-        // Map backend Message to frontend Message type
+        // Map backend Message to frontend Message type (including attachments)
         const mapped: Message[] = detail.messages.map((m) => ({
           id: m.id,
           conversationId: m.conversationId,
           role: m.role,
           content: m.content,
           createdAt: m.createdAt,
+          attachments: m.attachments,
         }));
 
         setMessages(mapped);
@@ -135,12 +136,14 @@ export const useChatManager = ({
       );
       setConversations(sorted);
 
+      // Map backend Message to frontend Message type (including attachments)
       const mapped: Message[] = detail.messages.map((m) => ({
         id: m.id,
         conversationId: m.conversationId,
         role: m.role,
         content: m.content,
         createdAt: m.createdAt,
+        attachments: m.attachments,
       }));
 
       setMessages(mapped);
@@ -218,13 +221,14 @@ export const useChatManager = ({
       setInputText("");
       setLoading(true);
 
-      // Optimistically add the user message to the UI
+      // Optimistically add the user message to the UI with attachments
       const tempUserMsg: Message = {
         id: "temp_" + Math.random().toString(36).substring(2, 11),
         conversationId: targetId,
         role: "user",
         content: trimmed,
         createdAt: new Date().toISOString(),
+        attachments: attachments?.length ? [...attachments] : undefined,
       };
       setMessages((prev) => [...prev, tempUserMsg]);
       scrollToBottom();

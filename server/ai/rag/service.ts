@@ -26,6 +26,35 @@ import type { SearchResult } from "./types";
 const logger = createLogger("RagService");
 
 /**
+ * Structured system instruction returned when a user asks to compare
+ * documents but fewer than two active documents are available in the
+ * conversation. The model must surface this to the user instead of
+ * comparing against deleted or missing content.
+ */
+const COMPARE_INSUFFICIENT_DOCUMENTS_INSTRUCTION =
+  "Only one document is currently available in this conversation. " +
+  "Ask the user to attach another document before performing comparisons.";
+
+/**
+ * Phrases that indicate the user wants to compare documents.
+ */
+const COMPARE_PHRASES = [
+  "compare documents",
+  "compare resumes",
+  "compare pdfs",
+  "compare these",
+  "compare the documents",
+  "compare the two",
+  "compare both",
+  "compare them",
+  "compare again",
+  "compare available documents",
+  "compare uploaded documents",
+  "diff the documents",
+  "difference between the documents",
+];
+
+/**
  * Formatted context string from retrieved documents.
  */
 export interface RagContext {
@@ -163,6 +192,35 @@ class RagService {
     query: string,
     documentIds: string[],
   ): Promise<RagContext | null> {
+    // ── Compare guard (runs BEFORE any retrieval) ───────────────────
+    // Comparison requests must NEVER trigger global/unscoped retrieval.
+    // If the user is asking to compare documents (resumes, PDFs, "these",
+    // "again", etc.) but fewer than two active documents are available in
+    // this conversation, we must NOT compare against deleted or missing
+    // content. Instead we return a structured system instruction telling
+    // the model to ask the user to attach another document before comparing.
+    //
+    // This guard is evaluated before the `documentIds.length === 0`
+    // fallback below so that a comparison request with zero active
+    // documents does NOT fall through to an unscoped global vector search
+    // (which would otherwise leak unrelated chunks from previously indexed
+    // documents).
+    if (this.isCompareRequest(query)) {
+      logger.info("Comparison request detected");
+      logger.info(`Active document count: ${documentIds.length}`);
+
+      if (documentIds.length < 2) {
+        logger.info("Retrieval skipped due to insufficient documents");
+
+        return {
+          context: COMPARE_INSUFFICIENT_DOCUMENTS_INSTRUCTION,
+          chunkCount: 0,
+          avgScore: 0,
+        };
+      }
+    }
+    // ── END compare guard ───────────────────────────────────────────
+
     if (documentIds.length === 0) {
       return this.retrieveContext(query);
     }
@@ -181,30 +239,44 @@ class RagService {
     }
 
     try {
-      logger.debug(`Query: ${query}`);
-      logger.debug(
-        `Requested docs:\n${documentIds.map((id) => `- ${id}`).join("\n")}`,
-      );
+       // ── DEBUG: RagService document distribution ───────────────────────────
+       logger.info("=== RagService Debug ===");
+       logger.info("requested documentIds: " + documentIds.join(", "));
+       // ── END DEBUG ───────────────────────────────────────────────────────────
 
-      // Retrieve with document ID filtering passed to the retriever
-      // The retriever will pass the filter to the vector store for Chroma metadata filtering
-      const results = await this.retriever.retrieve(query, documentIds);
+       // Log the exact attachment array
+       logger.info(`Requested docs:`);
+       for (const id of documentIds) {
+         logger.info(`  - ${id}`);
+       }
 
-      logger.debug(`Retrieved ${results.length} chunks before filtering`);
+       // Retrieve with document ID filtering passed to the retriever
+       // The retriever will pass the filter to the vector store for Chroma metadata filtering
+       const results = await this.retriever.retrieve(query, documentIds);
 
-      // Log every chunk
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i];
-        const chunkDocId = r.document.metadata?.documentId as string | undefined;
-        const textPreview = r.document.pageContent.slice(0, 200);
-        logger.debug(
-          `Chunk ${i + 1}:\n` +
-          `documentId=${chunkDocId ?? "undefined"}\n` +
-          `text=${textPreview}`,
-        );
-      }
+       // Log every chunk with metadata
+       logger.info(`Retrieved chunks:`);
+       for (let i = 0; i < results.length; i++) {
+         const r = results[i];
+         const chunkDocId = r.document.metadata?.documentId as string | undefined;
+         const chunkFilename = r.document.metadata?.filename as string | undefined;
+         logger.info(
+           `  ${chunkFilename ?? "unknown"} -> documentId=${chunkDocId ?? "undefined"}, score=${r.score.toFixed(4)}`
+         );
+       }
 
-      logger.debug(`Retrieved ${results.length} chunks after filtering`);
+       // Log combined retrieval
+       const docChunks = new Map<string, number>();
+       for (const r of results) {
+         const filename = r.document.metadata?.filename as string | undefined;
+         if (filename) {
+           docChunks.set(filename, (docChunks.get(filename) || 0) + 1);
+         }
+       }
+       logger.info(`Combined retrieval: ${results.length} chunks total`);
+       for (const [filename, count] of docChunks) {
+         logger.info(`  ${filename} -> ${count} chunks`);
+       }
 
       if (results.length === 0) {
         logger.debug("No relevant chunks found in attached documents");
@@ -213,6 +285,10 @@ class RagService {
 
       // Format the context
       const context = this.formatContext(results);
+
+      // ── DEBUG: Log the actual RAG context content ───────────────────────────────
+      logger.info("RAG context content preview: " + context.substring(0, 500) + "...");
+      // ── END DEBUG ───────────────────────────────────────────────────────────
 
       const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
 
@@ -234,6 +310,22 @@ class RagService {
   }
 
   /**
+   * Determine whether a user query is asking to compare documents.
+   *
+   * Matches explicit comparison phrases such as "compare documents",
+   * "compare resumes", "compare PDFs", and "compare these". This is used
+   * to gate attachment-scoped retrieval so the model never compares
+   * against deleted or missing document content.
+   *
+   * @param query - The user's query text.
+   * @returns true if the query is a comparison request.
+   */
+  private isCompareRequest(query: string): boolean {
+    const normalized = query.toLowerCase();
+    return COMPARE_PHRASES.some((phrase) => normalized.includes(phrase));
+  }
+
+  /**
    * Format retrieved search results into a system message context.
    *
    * @param results - Array of search results from the retriever.
@@ -241,9 +333,14 @@ class RagService {
    */
   private formatContext(results: SearchResult[]): string {
     const parts: string[] = [
-      "The following information is retrieved from the user's uploaded documents. " +
-      "Use this information to answer the user's question accurately. " +
-      "If the information is not relevant to the question, ignore it and answer normally.",
+      "The content below comes directly from documents attached by the user. " +
+      "The assistant has full access to those documents and can reference them freely. " +
+      "When the user says \"this document\", \"attached file\", \"attached PDF\", \"these documents\", " +
+      "or \"my resume\", they are referring to the attached content below. " +
+      "The assistant must never claim it cannot access the document, does not have access to the PDF, " +
+      "or that the document was not provided if relevant context exists below. " +
+      "If multiple documents are attached, treat all retrieved chunks as belonging to those documents " +
+      "and comparisons between them are allowed.",
       "",
       "Retrieved Context:",
     ];

@@ -30,6 +30,11 @@ export interface GroqConfig {
   modelName: string;
 }
 
+export interface GeminiConfig {
+  apiKey: string;
+  modelName: string;
+}
+
 export interface ViteDevConfig {
   hmrPort: number | undefined;
   disableHmr: boolean;
@@ -40,6 +45,7 @@ export interface AppConfig {
   aiProvider: "ollama" | "groq";
   ollama: OllamaConfig;
   groq: GroqConfig;
+  gemini: GeminiConfig;
   vite: ViteDevConfig;
 }
 
@@ -79,6 +85,10 @@ function loadConfig(): AppConfig {
   const groqApiKey = process.env.GROQ_API_KEY || "";
   const groqModelName = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
+  // --- Gemini ---
+  const geminiApiKey = process.env.GEMINI_API_KEY || "";
+  const geminiModelName = process.env.GEMINI_MODEL || "gemini-2.0-flash-exp";
+
   // --- Vite dev-server ---
   const hmrPortStr = process.env.HMR_PORT;
   const hmrPort = hmrPortStr ? parseInt(hmrPortStr, 10) : undefined;
@@ -94,6 +104,7 @@ function loadConfig(): AppConfig {
     aiProvider,
     ollama: { baseUrl, modelName },
     groq: { apiKey: groqApiKey, modelName: groqModelName },
+    gemini: { apiKey: geminiApiKey, modelName: geminiModelName },
     vite: { hmrPort, disableHmr },
   };
 }

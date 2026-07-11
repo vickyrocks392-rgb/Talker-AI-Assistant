@@ -10,14 +10,20 @@ import { createLogger } from "../utils/logger";
 import { AIProvider } from "./types";
 import { OllamaProvider } from "./ollama";
 import { GroqProvider } from "./groq";
+import { getFailoverProvider, resetFailoverProvider } from "./failover";
 
 const logger = createLogger("ProviderFactory");
 
 let cachedProvider: AIProvider | null = null;
 
 /**
- * Return the singleton AI provider instance based on the AI_PROVIDER env var.
+ * Return the singleton AI provider instance.
  *
+ * If AI_FAILOVER_ENABLED is true (default), returns a FailoverProvider that
+ * automatically tries multiple providers in priority order with health tracking
+ * and exponential backoff.
+ *
+ * Otherwise, returns the provider specified by AI_PROVIDER env var:
  * - "ollama" (default) → OllamaProvider
  * - "groq"            → GroqProvider
  *
@@ -29,6 +35,16 @@ export function getAIProvider(): AIProvider {
   }
 
   const { aiProvider } = getConfig();
+  const failoverEnabled = process.env.AI_FAILOVER_ENABLED !== "false";
+
+  // Use failover provider if enabled
+  if (failoverEnabled) {
+    logger.info("Initialising AI provider with failover support");
+    cachedProvider = getFailoverProvider();
+    return cachedProvider;
+  }
+
+  // Legacy single-provider mode
   logger.info(`Initialising AI provider: "${aiProvider}"`);
 
   switch (aiProvider) {
@@ -52,4 +68,5 @@ export function getAIProvider(): AIProvider {
  */
 export function resetProvider(): void {
   cachedProvider = null;
+  resetFailoverProvider();
 }

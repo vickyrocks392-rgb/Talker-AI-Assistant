@@ -28,6 +28,7 @@ import { RagRetriever } from "../ai/rag/retriever";
 import { createLogger } from "../utils/logger";
 import { ValidationError, NotFoundError } from "../utils/errors";
 import { getDatabase } from "../db/database";
+import { memoryService } from "../memory/service";
 import type { RagDocument } from "../ai/rag/types";
 
 const logger = createLogger("RagRoute");
@@ -406,7 +407,13 @@ router.get("/rag/documents/:id/text", async (req, res, next) => {
 
 /**
  * DELETE /api/rag/documents/:id
- * Delete a document and its embeddings.
+ * Delete a document, its ChromaDB embeddings, and its conversation
+ * active-document references atomically.
+ *
+ * All three removals (Chroma vectors, SQLite metadata, conversation
+ * active documents) must succeed together. If any step fails, the
+ * SQLite metadata deletion is rolled back so the document remains
+ * fully intact and retrievable.
  */
 router.delete("/rag/documents/:id", async (req, res, next) => {
   try {
@@ -419,38 +426,28 @@ router.delete("/rag/documents/:id", async (req, res, next) => {
       throw new NotFoundError(`Document ${documentId} not found`);
     }
 
-    // Delete from ChromaDB by deleting all chunks for this document
-    try {
-      const embeddings = new RagEmbeddings();
-      const vectorStore = new RagVectorStore(embeddings);
-      
-      // Search for all chunks belonging to this document
-      const results = await vectorStore.similaritySearch(documentId, 1000);
-      const docChunks = results.filter((r) => r.document.metadata?.documentId === documentId);
-      
-      if (docChunks.length > 0) {
-        // Delete the collection and recreate it without this document's chunks
-        // Since ChromaDB doesn't support selective deletion easily, we'll
-        // re-add all chunks except the ones from this document
-        const allResults = await vectorStore.similaritySearch("", 1000);
-        const otherChunks = allResults.filter((r) => r.document.metadata?.documentId !== documentId);
-        
-        await vectorStore.deleteAll();
-        
-        if (otherChunks.length > 0) {
-          const reAddEmbeddings = new RagEmbeddings();
-          const reAddStore = new RagVectorStore(reAddEmbeddings);
-          await reAddStore.addDocuments(otherChunks.map((r) => r.document));
-        }
-      }
-    } catch (err) {
-      logger.warn(`Failed to delete embeddings from ChromaDB: ${err}`);
-    }
+    // Step 1: Remove Chroma vectors for this document.
+    // This is the first, non-transactional step. If it fails we abort
+    // before touching SQLite so the document stays fully consistent.
+    const embeddings = new RagEmbeddings();
+    const vectorStore = new RagVectorStore(embeddings);
+    await vectorStore.deleteDocument(documentId);
 
-    // Delete from SQLite
-    db.prepare("DELETE FROM documents WHERE id = ?").run(documentId);
+    // Step 2 + 3: Remove SQLite metadata and purge the document from every
+    // conversation's active documents inside a single transaction so the
+    // two SQLite mutations are atomic.
+    const deleteMeta = db.prepare("DELETE FROM documents WHERE id = ?");
+    const purgeActive = db.transaction(() => {
+      const remaining = memoryService.removeActiveDocumentFromAllConversations(documentId);
+      deleteMeta.run(documentId);
+      return remaining;
+    });
 
-    logger.info(`Document deleted: ${documentId}`);
+    const remainingActiveDocuments = purgeActive();
+
+    logger.info(`Deleted vectors for document: ${documentId}`);
+    logger.info(`Remaining active documents: ${remainingActiveDocuments}`);
+
     res.json({ success: true, documentId });
   } catch (error) {
     next(error);
