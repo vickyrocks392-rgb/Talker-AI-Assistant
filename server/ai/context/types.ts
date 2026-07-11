@@ -88,6 +88,15 @@ export interface ContextMetadata {
   /** Average RAG relevance score (0 if none). */
   ragAvgScore: number;
 
+  /** Whether global memory context was injected. */
+  hasMemoryContext: boolean;
+
+  /** Number of global memory entries retrieved (0 if none). */
+  memoryEntryCount: number;
+
+  /** Average global memory confidence score (0 if none). */
+  memoryAvgConfidence: number;
+
   /** Whether a tool result was injected. */
   hasToolResult: boolean;
 

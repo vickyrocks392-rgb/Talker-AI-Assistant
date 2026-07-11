@@ -194,6 +194,18 @@ export async function handleNonStreaming(
     memoryService.saveMessage(conversationId, "assistant", parsed.replyText);
   }
 
+  // Step 5: Persist Q&A pair to global memory for site-wide reuse
+  // This makes the answer available across all conversations for the same user.
+  // Only persist meaningful Q&A pairs (non-empty, non-trivial responses).
+  if (parsed.replyText && parsed.replyText.trim().length > 10) {
+    try {
+      memoryService.saveGlobalMemory(text, parsed.replyText);
+      logger.debug("Q&A pair persisted to global memory");
+    } catch (error) {
+      logger.warn("Failed to persist to global memory", error);
+    }
+  }
+
   const chatResponse: ChatResponse = {
     replyText: parsed.replyText,
     mapAction: parsed.mapAction,
@@ -314,6 +326,16 @@ export async function handleStreaming(
               mapType: parsed.mapAction.type,
               attachmentsCount: resolvedAttachments?.length ?? 0,
             });
+          }
+
+          // Step 5: Persist Q&A pair to global memory for site-wide reuse
+          if (parsed.replyText && parsed.replyText.trim().length > 10) {
+            try {
+              memoryService.saveGlobalMemory(text, parsed.replyText);
+              logger.debug("Q&A pair persisted to global memory (streaming)");
+            } catch (error) {
+              logger.warn("Failed to persist to global memory (streaming)", error);
+            }
           }
 
           const chatResponse: ChatResponse = {

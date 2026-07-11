@@ -27,6 +27,7 @@
 
 import { createChatSystemPrompt } from "../prompts";
 import { memoryService } from "../../memory/service";
+import { retrieveMemory } from "../../memory/retrieval";
 import { plan } from "../tools/planner";
 import { executeTool } from "../tools/executor";
 import { ragService } from "../rag/service";
@@ -96,7 +97,14 @@ export class ContextBuilder {
       ? this.loadHistory(conversationId, history)
       : [];
 
-    // ── 3. RAG Context (conditional) ──────────────────────────────
+    // ── 3. Global Memory Retrieval (user-scoped, site-wide) ───────
+    // This retrieves Q&A pairs from previous conversations that are
+    // relevant to the current query. Memory retrieval is completely
+    // separate from document/RAG retrieval (requirement 4).
+    // Memory augments responses rather than replacing reasoning (req 5).
+    const memoryResult = retrieveMemory(text);
+
+    // ── 4. RAG Context (conditional) ──────────────────────────────
     // RAG retrieval is NEVER performed in the non-attachment path.
     // Knowledge Center documents must never participate in chat retrieval
     // unless they are attached as active documents for the current conversation.
@@ -104,7 +112,7 @@ export class ContextBuilder {
     // and it scopes retrieval to the active document IDs only.
     const ragResult = null;
 
-    // ── 4. Tool Context (conditional) ─────────────────────────────
+    // ── 5. Tool Context (conditional) ─────────────────────────────
     const shouldUseTools = executionPlan ? executionPlan.useTools : true;
     const toolResult = shouldUseTools
       ? await this.executeToolIfNeeded(text, executionPlan)
@@ -128,6 +136,16 @@ export class ContextBuilder {
         priority: ContextPriority.Low,
         content: msg.content,
         role: msg.role === "user" ? "user" : "assistant",
+      });
+    }
+
+    // Global memory context (Medium priority — augments responses)
+    if (memoryResult.hasMemory) {
+      sections.push({
+        label: "global_memory_context",
+        priority: ContextPriority.Medium,
+        content: memoryResult.formattedContext,
+        role: "system",
       });
     }
 
@@ -173,6 +191,9 @@ export class ContextBuilder {
       hasRagContext: ragResult !== null,
       ragChunkCount: ragResult?.chunkCount ?? 0,
       ragAvgScore: ragResult?.avgScore ?? 0,
+      hasMemoryContext: memoryResult.hasMemory,
+      memoryEntryCount: memoryResult.entries.length,
+      memoryAvgConfidence: memoryResult.avgConfidence,
       hasToolResult: toolResult !== null,
       toolName: toolResult?.toolName ?? "",
       toolSuccess: toolResult?.result.success ?? false,
@@ -183,6 +204,7 @@ export class ContextBuilder {
     logger.info(
       `Context built: ${messages.length} messages, ` +
       `${metadata.totalChars} chars, ` +
+      `memory=${metadata.hasMemoryContext}, ` +
       `rag=${metadata.hasRagContext}, ` +
       `tool=${metadata.hasToolResult}, ` +
       `history=${metadata.historyMessageCount}` +
@@ -233,7 +255,14 @@ export class ContextBuilder {
        ? this.loadHistory(conversationId, history)
        : [];
 
-     // ── 3. RAG Context (conditional, scoped to attachments) ───────
+     // ── 3. Global Memory Retrieval (user-scoped, site-wide) ───────
+     // This retrieves Q&A pairs from previous conversations that are
+     // relevant to the current query. Memory retrieval is completely
+     // separate from document/RAG retrieval (requirement 4).
+     // Memory augments responses rather than replacing reasoning (req 5).
+     const memoryResult = retrieveMemory(text);
+
+     // ── 4. RAG Context (conditional, scoped to attachments) ───────
      const documentIds = attachments
        .filter((a) => a.documentId)
        .map((a) => a.documentId);
@@ -297,6 +326,16 @@ export class ContextBuilder {
       });
     }
 
+    // Global memory context (Medium priority — augments responses)
+    if (memoryResult.hasMemory) {
+      sections.push({
+        label: "global_memory_context",
+        priority: ContextPriority.Medium,
+        content: memoryResult.formattedContext,
+        role: "system",
+      });
+    }
+
     // RAG context (Medium priority)
     if (ragResult) {
       sections.push({
@@ -354,6 +393,9 @@ export class ContextBuilder {
       hasRagContext: ragResult !== null,
       ragChunkCount: ragResult?.chunkCount ?? 0,
       ragAvgScore: ragResult?.avgScore ?? 0,
+      hasMemoryContext: memoryResult.hasMemory,
+      memoryEntryCount: memoryResult.entries.length,
+      memoryAvgConfidence: memoryResult.avgConfidence,
       hasToolResult: toolResult !== null,
       toolName: toolResult?.toolName ?? "",
       toolSuccess: toolResult?.result.success ?? false,
@@ -364,6 +406,7 @@ export class ContextBuilder {
     logger.info(
       `Context built with attachments: ${messages.length} messages, ` +
       `${metadata.totalChars} chars, ` +
+      `memory=${metadata.hasMemoryContext}, ` +
       `rag=${metadata.hasRagContext} (${metadata.ragChunkCount} chunks), ` +
       `attachments=[${attachmentNames}]` +
       (executionPlan ? `, plan=${executionPlan.mode}` : ""),

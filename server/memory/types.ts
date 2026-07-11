@@ -28,3 +28,19 @@ export interface Message {
   /** Optional file attachments associated with this message */
   attachments?: ChatAttachment[];
 }
+
+/**
+ * A global memory entry — a Q&A pair that persists across all conversations
+ * for the same user. This is user-scoped memory, separate from conversation-
+ * scoped memory.
+ */
+export interface GlobalMemoryEntry {
+  id: string;
+  query: string;
+  answer: string;
+  createdAt: string;
+  updatedAt: string;
+  accessCount: number;
+  /** Optional comma-separated tags for categorisation */
+  tags?: string;
+}

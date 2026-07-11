@@ -8,7 +8,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getDatabase } from "../db/database";
 import { createLogger } from "../utils/logger";
-import type { Conversation, Message, ChatAttachment } from "./types";
+import type { Conversation, Message, ChatAttachment, GlobalMemoryEntry } from "./types";
 
 const logger = createLogger("MemoryRepository");
 
@@ -438,4 +438,162 @@ export function removeActiveDocumentFromAllConversations(
   transaction();
 
   return remainingCount;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// Global Memory (site-wide, user-scoped Q&A pairs)
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * Saves a global memory entry (Q&A pair) that persists across all conversations
+ * for the same user. If an entry with the same query already exists, it updates
+ * the answer and increments the access count.
+ *
+ * @param query - The user's question text.
+ * @param answer - The assistant's answer text.
+ * @returns The saved global memory entry.
+ */
+export function saveGlobalMemory(query: string, answer: string): GlobalMemoryEntry {
+  const db = getDatabase();
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  // Check if an entry with similar query already exists (case-insensitive exact match)
+  const existing = db.prepare(`
+    SELECT id, access_count FROM global_memory WHERE LOWER(query) = LOWER(?)
+  `).get(query) as { id: string; access_count: number } | undefined;
+
+  if (existing) {
+    // Update existing entry
+    const stmt = db.prepare(`
+      UPDATE global_memory
+      SET answer = ?, updated_at = ?, access_count = access_count + 1
+      WHERE id = ?
+    `);
+    stmt.run(answer, now, existing.id);
+
+    const updated = db.prepare(`
+      SELECT id, query, answer, created_at AS createdAt, updated_at AS updatedAt,
+             access_count AS accessCount, tags
+      FROM global_memory WHERE id = ?
+    `).get(existing.id) as GlobalMemoryEntry;
+
+    return updated;
+  }
+
+  // Insert new entry
+  const stmt = db.prepare(`
+    INSERT INTO global_memory (id, query, answer, created_at, updated_at, access_count)
+    VALUES (?, ?, ?, ?, ?, 1)
+  `);
+  stmt.run(id, query, answer, now, now);
+
+  return {
+    id,
+    query,
+    answer,
+    createdAt: now,
+    updatedAt: now,
+    accessCount: 1,
+  };
+}
+
+/**
+ * Retrieves all global memory entries, ordered by most recently updated first.
+ */
+export function getAllGlobalMemory(): GlobalMemoryEntry[] {
+  const db = getDatabase();
+
+  const stmt = db.prepare(`
+    SELECT id, query, answer, created_at AS createdAt, updated_at AS updatedAt,
+           access_count AS accessCount, tags
+    FROM global_memory
+    ORDER BY updated_at DESC
+  `);
+
+  return stmt.all() as GlobalMemoryEntry[];
+}
+
+/**
+ * Retrieves a single global memory entry by ID.
+ */
+export function getGlobalMemoryById(id: string): GlobalMemoryEntry | undefined {
+  const db = getDatabase();
+
+  const stmt = db.prepare(`
+    SELECT id, query, answer, created_at AS createdAt, updated_at AS updatedAt,
+           access_count AS accessCount, tags
+    FROM global_memory WHERE id = ?
+  `);
+
+  return stmt.get(id) as GlobalMemoryEntry | undefined;
+}
+
+/**
+ * Searches global memory for entries matching the given query text.
+ * Uses simple LIKE-based keyword matching with relevance scoring.
+ *
+ * @param query - The search text.
+ * @param limit - Maximum number of results to return (default 5).
+ * @returns Array of matching entries with relevance scores, ordered by relevance.
+ */
+export function searchGlobalMemory(
+  query: string,
+  limit: number = 5,
+): { entry: GlobalMemoryEntry; score: number }[] {
+  const db = getDatabase();
+  const allEntries = getAllGlobalMemory();
+
+  if (allEntries.length === 0) {
+    return [];
+  }
+
+  const queryLower = query.toLowerCase();
+  const queryTokens = queryLower.split(/\s+/).filter((t) => t.length > 0);
+
+  if (queryTokens.length === 0) {
+    return [];
+  }
+
+  // Score each entry based on keyword overlap
+  const scored: { entry: GlobalMemoryEntry; score: number }[] = [];
+
+  for (const entry of allEntries) {
+    const entryText = `${entry.query} ${entry.answer}`.toLowerCase();
+    let matchCount = 0;
+
+    for (const token of queryTokens) {
+      if (entryText.includes(token)) {
+        matchCount++;
+      }
+    }
+
+    if (matchCount > 0) {
+      // Score = keyword match ratio + access count bonus (normalised)
+      const keywordScore = matchCount / queryTokens.length;
+      const accessBonus = Math.min(entry.accessCount / 10, 0.3); // up to 0.3 bonus
+      const score = Math.min(keywordScore + accessBonus, 1.0);
+
+      scored.push({ entry, score });
+    }
+  }
+
+  // Sort by score descending, then by updated_at descending
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return b.entry.updatedAt.localeCompare(a.entry.updatedAt);
+  });
+
+  return scored.slice(0, limit);
+}
+
+/**
+ * Deletes a global memory entry by ID.
+ * Returns true if deleted, false if not found.
+ */
+export function deleteGlobalMemory(id: string): boolean {
+  const db = getDatabase();
+  const stmt = db.prepare("DELETE FROM global_memory WHERE id = ?");
+  const result = stmt.run(id);
+  return result.changes > 0;
 }

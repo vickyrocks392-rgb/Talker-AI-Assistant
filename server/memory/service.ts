@@ -18,9 +18,15 @@ import {
   setActiveDocuments as repoSetActiveDocuments,
   removeActiveDocument as repoRemoveActiveDocument,
   removeActiveDocumentFromAllConversations as repoRemoveActiveDocumentFromAllConversations,
+  saveGlobalMemory as repoSaveGlobalMemory,
+  getAllGlobalMemory as repoGetAllGlobalMemory,
+  searchGlobalMemory as repoSearchGlobalMemory,
+  deleteGlobalMemory as repoDeleteGlobalMemory,
 } from "./repository";
 
-import type { Conversation, Message, ChatAttachment } from "./types";
+import { qualifyForMemory } from "./qualifier";
+
+import type { Conversation, Message, ChatAttachment, GlobalMemoryEntry } from "./types";
 
 const logger = createLogger("MemoryService");
 
@@ -117,6 +123,61 @@ class MemoryService {
     const remaining = repoRemoveActiveDocumentFromAllConversations(documentId);
     logger.info(`[MemoryService.removeActiveDocumentFromAllConversations] Remaining active documents: ${remaining}`);
     return remaining;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // Global Memory (site-wide, user-scoped Q&A pairs)
+  // ══════════════════════════════════════════════════════════════════
+
+  /**
+   * Saves a Q&A pair to global memory for reuse across conversations.
+   *
+   * The Q&A pair is first run through the memory qualifier to determine
+   * if it contains long-term useful knowledge. Low-value entries
+   * (greetings, acknowledgements, filler, etc.) are silently rejected.
+   *
+   * @param query - The user's question text.
+   * @param answer - The assistant's answer text.
+   * @returns The saved global memory entry, or undefined if rejected by the qualifier.
+   */
+  saveGlobalMemory(query: string, answer: string): GlobalMemoryEntry | undefined {
+    // Run the memory qualifier to filter out low-value entries
+    const qualification = qualifyForMemory(query, answer);
+
+    if (!qualification.shouldSave) {
+      logger.debug(
+        `[MemoryService.saveGlobalMemory] Rejected by qualifier: ${qualification.reason}`,
+      );
+      return undefined;
+    }
+
+    logger.info(
+      `[MemoryService.saveGlobalMemory] Qualified (score: ${qualification.score.toFixed(3)}): "${query.substring(0, 80)}..."`,
+    );
+
+    return repoSaveGlobalMemory(query, answer);
+  }
+
+  /**
+   * Retrieves all global memory entries.
+   */
+  getAllGlobalMemory(): GlobalMemoryEntry[] {
+    return repoGetAllGlobalMemory();
+  }
+
+  /**
+   * Searches global memory for entries relevant to the given query.
+   * Returns scored results ordered by relevance.
+   */
+  searchGlobalMemory(query: string, limit?: number): { entry: GlobalMemoryEntry; score: number }[] {
+    return repoSearchGlobalMemory(query, limit);
+  }
+
+  /**
+   * Deletes a global memory entry by ID.
+   */
+  deleteGlobalMemory(id: string): boolean {
+    return repoDeleteGlobalMemory(id);
   }
 }
 
