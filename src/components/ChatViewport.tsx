@@ -315,7 +315,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
 
   return (
     <div 
-      className="flex-1 flex flex-col overflow-hidden relative"
+      className="flex flex-col h-full overflow-hidden relative"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -338,7 +338,8 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
         )}
       </AnimatePresence>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 md:px-6 py-6">
+      {/* Message history - Independently scrollable */}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 md:px-6 py-6">
         <div className="max-w-3xl mx-auto w-full space-y-6">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center text-center py-12 animate-fade-in">
@@ -435,13 +436,14 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
         </div>
       </div>
 
-      {/* AI Monitor Panel — collapsible execution details */}
+      {/* AI Monitor Panel — attached above input */}
       <AIMonitorPanel data={aiMonitorData ?? null} />
 
       {/* ── DEBUG: Log aiMonitorData received by ChatViewport ─────────── */}
       {(() => { console.log("[AI Monitor DEBUG] ChatViewport aiMonitorData:", aiMonitorData); return null; })()}
 
-      <div className="border-t border-gray-200 bg-white px-4 md:px-6 py-4">
+      {/* Message input - Fixed at bottom */}
+      <div className="border-t border-gray-200 bg-white px-4 md:px-6 py-4 flex-shrink-0">
         <div className="max-w-3xl mx-auto w-full">
           <AnimatePresence>
             {handsFreeMode && (

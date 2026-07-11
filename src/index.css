@@ -369,3 +369,15 @@ textarea.custom-scrollbar::-webkit-scrollbar-thumb:hover {
 .attachment-chip-glow:hover {
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
 }
+
+/* Prevent browser scroll - Application shell */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+}

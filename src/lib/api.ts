@@ -53,6 +53,43 @@ export interface ChatResponseDTO {
   aiMonitor?: AIMonitorDTO;
 }
 
+// ── System Health (System Control Center) ──────────────────────────
+
+export type HealthStatus = "healthy" | "degraded" | "unavailable";
+
+export interface ComponentHealthDTO {
+  status: HealthStatus;
+  detail?: string;
+}
+
+export interface ProviderHealthDTO {
+  status: HealthStatus;
+  configured: boolean;
+  detail?: string;
+}
+
+export interface ModelVisibilityDTO {
+  provider: string;
+  model: string;
+  embeddingModel: string;
+}
+
+export interface SystemHealthDTO {
+  backend: ComponentHealthDTO;
+  providers: {
+    groq: ProviderHealthDTO;
+    gemini: ProviderHealthDTO;
+    ollama: ProviderHealthDTO;
+  };
+  database: ComponentHealthDTO;
+  chromadb: ComponentHealthDTO;
+  embeddings: ComponentHealthDTO;
+  memory: ComponentHealthDTO;
+  rag: ComponentHealthDTO;
+  models: ModelVisibilityDTO;
+  timestamp: string;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function getAuthHeaders(): Record<string, string> {
@@ -218,4 +255,11 @@ export function sendChatMessageStream(
       })
       .catch(reject);
   });
+}
+
+// ── System Health API ────────────────────────────────────────────────
+
+/** GET /api/system/health — System Control Center health report. */
+export function fetchSystemHealth(): Promise<SystemHealthDTO> {
+  return request<SystemHealthDTO>("/api/system/health");
 }

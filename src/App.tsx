@@ -27,6 +27,7 @@ import { ChatSessionsStrip } from "./components/ChatSessionsStrip";
 import { ChatViewport } from "./components/ChatViewport";
 import { LockScreen } from "./components/LockScreen";
 import { KnowledgeCenter } from "./components/KnowledgeCenter";
+import { WorkspaceIntelligenceSidebar } from "./components/WorkspaceIntelligenceSidebar";
 
 export default function App() {
   // 1. Browser Network State
@@ -42,6 +43,14 @@ export default function App() {
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Prevent browser scroll on mount
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
     };
   }, []);
 
@@ -170,7 +179,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa] text-gray-900 font-sans flex overflow-hidden w-full relative">
+    <div className="h-screen bg-[#fafafa] text-gray-900 font-sans flex overflow-hidden w-full">
       {/* Left Sidebar Panel (Responsive layout) */}
       <AnimatePresence>
         {sidebarOpen && (
@@ -188,15 +197,16 @@ export default function App() {
               className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-40 lg:hidden"
             />
 
-            {/* Sidebar content container */}
+            {/* Sidebar content container - Fixed height with independent scrolling */}
             <motion.div
               initial={{ x: -320, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -320, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 220 }}
-              className="fixed top-0 bottom-0 left-0 w-[300px] bg-white border-r border-gray-200 p-5 flex flex-col justify-between z-50 lg:static lg:h-screen lg:w-[320px] lg:flex-shrink-0 shadow-xl"
+              className="fixed top-0 bottom-0 left-0 w-[300px] bg-white border-r border-gray-200 z-50 lg:static lg:h-full lg:w-[320px] lg:flex-shrink-0 shadow-xl flex flex-col"
             >
-              <div className="flex flex-col gap-4 min-h-0 flex-1">
+              {/* Sidebar Header - Fixed */}
+              <div className="flex flex-col gap-4 p-5">
                 {/* Logo and Product Name - Improved branding */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -243,26 +253,30 @@ export default function App() {
                   <BookOpen className="w-4 h-4" />
                   Knowledge Center
                 </button>
-
-                {/* Session lists and filters */}
-                <ChatSessionsStrip
-                  conversations={conversations}
-                  activeConversationId={activeConversationId}
-                  onSelectChat={(id) => {
-                    setActiveConversationId(id);
-                    if (window.innerWidth < 1024) {
-                      setSidebarOpen(false);
-                    }
-                  }}
-                  messages={messages}
-                  onCreateSession={createNewSession}
-                  onDeleteSession={deleteSession}
-                  loading={loading}
-                />
               </div>
 
-              {/* Sidebar bottom block: User profile and settings */}
-              <div className="border-t border-gray-200 pt-4 mt-auto flex flex-col gap-3">
+              {/* Conversation list - Independently scrollable */}
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <div className="px-5 pb-4">
+                  <ChatSessionsStrip
+                    conversations={conversations}
+                    activeConversationId={activeConversationId}
+                    onSelectChat={(id) => {
+                      setActiveConversationId(id);
+                      if (window.innerWidth < 1024) {
+                        setSidebarOpen(false);
+                      }
+                    }}
+                    messages={messages}
+                    onCreateSession={createNewSession}
+                    onDeleteSession={deleteSession}
+                    loading={loading}
+                  />
+                </div>
+              </div>
+
+              {/* Sidebar bottom block: User profile and settings - Fixed */}
+              <div className="border-t border-gray-200 pt-4 p-5 flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-2">
                   {currentUser ? (
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -318,48 +332,8 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Knowledge Center Panel (collapsible width animation) */}
-      {/* Backdrop for mobile */}
-      <AnimatePresence>
-        {knowledgeOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => {
-              if (window.innerWidth < 1024) {
-                setKnowledgeOpen(false);
-              }
-            }}
-            className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-40 lg:hidden"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Knowledge Center Panel */}
-      <motion.div
-        animate={{ 
-          width: knowledgeOpen ? 340 : 0,
-          opacity: knowledgeOpen ? 1 : 0,
-        }}
-        transition={{ 
-          duration: 0.3,
-          ease: [0.4, 0, 0.2, 1],
-        }}
-        className="overflow-hidden flex-shrink-0 bg-white border-l border-gray-200 shadow-xl"
-        style={{ minWidth: 0 }}
-      >
-        <div className="h-screen overflow-hidden">
-          {knowledgeOpen && (
-            <div className="w-[340px] h-full">
-              <KnowledgeCenter onClose={() => setKnowledgeOpen(false)} />
-            </div>
-          )}
-        </div>
-      </motion.div>
-
-      {/* Main Workspace Frame */}
-      <div className="flex-1 flex flex-col h-screen bg-[#fafafa] overflow-hidden relative">
+      {/* Main Workspace Frame - Fixed height, no scroll */}
+      <div className="flex-1 flex flex-col h-full bg-[#fafafa] overflow-hidden relative">
         {/* Offline Notification Banner */}
         <AnimatePresence>
           {!isOnline && (
@@ -379,7 +353,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Global Header Bar - Improved with meaningful metadata */}
+        {/* Global Header Bar - Fixed */}
         <header className="h-16 border-b border-gray-200 bg-white px-4 md:px-6 flex items-center justify-between z-10 flex-shrink-0">
           <div className="flex items-center gap-3">
             {/* Toggle sidebar panel */}
@@ -437,8 +411,8 @@ export default function App() {
           </div>
         </header>
 
-        {/* Dynamic chat interface body viewport */}
-        <main className="flex-1 overflow-hidden bg-[#fafafa] flex flex-col">
+        {/* Dynamic chat interface body viewport - Independently scrollable */}
+        <main className="flex-1 min-h-0 overflow-y-auto bg-[#fafafa] flex flex-col">
           <ChatViewport
             messages={messages}
             loading={loading}
@@ -489,6 +463,49 @@ export default function App() {
             />
           )}
         </AnimatePresence>
+      </div>
+
+      {/* Knowledge Center Panel (collapsible width animation) */}
+      {/* Backdrop for mobile */}
+      <AnimatePresence>
+        {knowledgeOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => {
+              if (window.innerWidth < 1024) {
+                setKnowledgeOpen(false);
+              }
+            }}
+            className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-40 lg:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Knowledge Center Panel - Independently scrollable */}
+      <motion.div
+        animate={{ 
+          width: knowledgeOpen ? 340 : 0,
+          opacity: knowledgeOpen ? 1 : 0,
+        }}
+        transition={{ 
+          duration: 0.3,
+          ease: [0.4, 0, 0.2, 1],
+        }}
+        className="overflow-hidden flex-shrink-0 bg-white border-l border-gray-200 shadow-xl"
+        style={{ minWidth: 0 }}
+      >
+        <div className="h-full flex flex-col min-h-0">
+          {knowledgeOpen && (
+            <KnowledgeCenter onClose={() => setKnowledgeOpen(false)} />
+          )}
+        </div>
+      </motion.div>
+
+      {/* Workspace Intelligence Sidebar (permanent on desktop) - Independently scrollable */}
+      <div className="hidden lg:block w-[380px] flex-shrink-0 border-l border-gray-200 bg-white shadow-xl h-full">
+        <WorkspaceIntelligenceSidebar aiMonitorData={aiMonitorData} />
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import { getActiveModel, getOllamaBaseUrl } from "../ai/config";
 import { getAIProvider } from "../ai/provider";
 import { APP_NAME, APP_VERSION } from "../config/version";
 import { getHealth } from "../services/health";
+import { getSystemHealth } from "../services/health";
 import { createLogger } from "../utils/logger";
 
 const logger = createLogger("HealthRoute");
@@ -46,6 +47,27 @@ router.get("/api/health", async (_req, res, next) => {
       sqlite: false,
       ragReady: false,
       error: "Health check failed",
+    });
+  }
+});
+
+/**
+ * GET /api/system/health
+ * System Control Center health report.
+ *
+ * Returns tri-state health (healthy / degraded / unavailable) for every
+ * system component plus current model visibility. No secrets, credentials,
+ * file paths, or connection strings are exposed.
+ */
+router.get("/api/system/health", async (_req, res) => {
+  try {
+    const report = await getSystemHealth();
+    res.json(report);
+  } catch (error) {
+    logger.error("System health check failed", error);
+    res.status(500).json({
+      error: "System health check failed",
+      timestamp: new Date().toISOString(),
     });
   }
 });
