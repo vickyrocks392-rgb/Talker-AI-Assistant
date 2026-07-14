@@ -200,6 +200,10 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
 
     try {
       await uploadDocument(file);
+      // Dispatch event for sidebar auto-expand
+      console.log('[AutoExpand] document-uploaded event dispatched');
+      const event = new CustomEvent('document-uploaded');
+      window.dispatchEvent(event);
     } catch (error: any) {
       setAttachments(prev =>
         prev.map(a =>
@@ -278,6 +282,10 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
 
       try {
         await uploadDocument(fileObj);
+        // Dispatch event for sidebar auto-expand
+        console.log('[AutoExpand] document-uploaded event dispatched');
+        const event = new CustomEvent('document-uploaded');
+        window.dispatchEvent(event);
       } catch (error: any) {
         setAttachments(prev =>
           prev.map(a =>

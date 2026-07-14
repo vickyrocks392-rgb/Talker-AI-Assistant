@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   WifiOff,
   Settings as SettingsIcon,
@@ -130,6 +130,109 @@ export default function App() {
   const [activeSettings, setActiveSettings] = useState<boolean>(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  
+  // Workspace Intelligence Sidebar state with persistence
+  const [workspaceIntelligenceOpen, setWorkspaceIntelligenceOpen] = useState<boolean>(() => {
+    const stored = localStorage.getItem("workspace_intelligence_open");
+    return stored === "true";
+  });
+  
+  // Draggable button position state
+  const [buttonY, setButtonY] = useState<number>(() => {
+    const stored = localStorage.getItem("workspace_intelligence_button_y");
+    if (stored) {
+      const parsed = parseInt(stored, 10);
+      if (!isNaN(parsed)) {
+        return parsed;
+      }
+    }
+    return window.innerHeight / 2; // Default to middle of viewport
+  });
+  
+  const isDraggingRef = useRef(false);
+  const dragStartYRef = useRef(0);
+  const buttonStartYRef = useRef(0);
+  const hasDraggedRef = useRef(false);
+  
+  // Persist button position to localStorage
+  useEffect(() => {
+    localStorage.setItem("workspace_intelligence_button_y", String(buttonY));
+  }, [buttonY]);
+  
+  // Drag handlers for the button
+  const handleButtonMouseDown = useCallback((e: any) => {
+    isDraggingRef.current = true;
+    hasDraggedRef.current = false;
+    dragStartYRef.current = e.clientY;
+    buttonStartYRef.current = buttonY;
+    e.preventDefault();
+  }, [buttonY]);
+  
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      
+      const deltaY = e.clientY - dragStartYRef.current;
+      const totalDistance = Math.abs(deltaY);
+      
+      // Mark as dragged if movement >= 5px
+      if (totalDistance >= 5) {
+        hasDraggedRef.current = true;
+      }
+      
+      const buttonHeight = 80; // Approximate button height
+      const newY = buttonStartYRef.current + deltaY;
+      
+      // Constrain to viewport
+      const constrainedY = Math.max(buttonHeight / 2, Math.min(window.innerHeight - buttonHeight / 2, newY));
+      setButtonY(constrainedY);
+    };
+    
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+    };
+    
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+  
+  // Click handler that respects drag distance
+  const handleButtonClick = useCallback(() => {
+    // Only open sidebar if we didn't drag
+    if (!hasDraggedRef.current) {
+      setWorkspaceIntelligenceOpen(true);
+    }
+    // Reset drag flag
+    hasDraggedRef.current = false;
+  }, []);
+  
+  // Track if auto-expansion has been triggered for each event category (with localStorage persistence)
+  const autoExpandTrackerRef = useRef<Set<string>>(new Set());
+  
+  // Initialize tracker from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem("workspace_intelligence_autoexpand_tracker");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as string[];
+        autoExpandTrackerRef.current = new Set(parsed);
+      } catch (e) {
+        // Invalid data, start fresh
+        autoExpandTrackerRef.current = new Set();
+      }
+    }
+  }, []);
+  
+  // Persist tracker to localStorage whenever it changes
+  useEffect(() => {
+    const toStore = Array.from(autoExpandTrackerRef.current);
+    localStorage.setItem("workspace_intelligence_autoexpand_tracker", JSON.stringify(toStore));
+  }, [autoExpandTrackerRef.current]);
 
   // First-run experience / onboarding state
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
@@ -156,6 +259,124 @@ export default function App() {
       setSidebarOpen(true);
     }
   }, []);
+
+  // Persist workspace intelligence sidebar state
+  useEffect(() => {
+    console.log(`[AutoExpand] workspaceIntelligenceOpen state changed to: ${workspaceIntelligenceOpen}`);
+    localStorage.setItem("workspace_intelligence_open", String(workspaceIntelligenceOpen));
+  }, [workspaceIntelligenceOpen]);
+
+  // Intelligent auto-expansion for important events
+  const triggerAutoExpand = useCallback((eventCategory: string) => {
+    console.log(`[AutoExpand] triggerAutoExpand(${eventCategory})`);
+    
+    const STORAGE_KEYS: Record<string, string> = {
+      'document_upload': 'workspace_intelligence_autoexpand_documents',
+      'memory_retrieval': 'workspace_intelligence_autoexpand_memory',
+      'rag_retrieval': 'workspace_intelligence_autoexpand_rag',
+      'tool_execution': 'workspace_intelligence_autoexpand_tools',
+      'system_degraded': 'workspace_intelligence_autoexpand_health',
+    };
+    
+    const storageKey = STORAGE_KEYS[eventCategory];
+    if (!storageKey) {
+      console.log(`[AutoExpand] No storage key for ${eventCategory}, returning`);
+      return;
+    }
+    
+    // Check localStorage for cooldown timestamp
+    const lastTriggered = localStorage.getItem(storageKey);
+    const now = Date.now();
+    
+    if (lastTriggered) {
+      const cooldownMs = 5 * 60 * 1000; // 5 minutes
+      const timeSinceTrigger = now - parseInt(lastTriggered, 10);
+      
+      console.log(`[AutoExpand] cooldown check:`, {
+        lastExpand: lastTriggered ? new Date(parseInt(lastTriggered, 10)).toISOString() : 'never',
+        now: new Date(now).toISOString(),
+        timeSinceTrigger: `${(timeSinceTrigger / 1000).toFixed(1)}s`,
+        cooldown: `${(cooldownMs / 1000).toFixed(1)}s`,
+        allowed: timeSinceTrigger >= cooldownMs
+      });
+      
+      // If within cooldown period, don't trigger
+      if (timeSinceTrigger < cooldownMs) {
+        console.log(`[AutoExpand] Cooldown active for ${eventCategory}, skipping`);
+        return;
+      }
+    } else {
+      console.log(`[AutoExpand] No previous trigger found for ${eventCategory}`);
+    }
+    
+    console.log(`[AutoExpand] Opening workspace sidebar`);
+    
+    // Store timestamp in localStorage
+    localStorage.setItem(storageKey, String(now));
+    
+    // Auto-expand the sidebar
+    console.log(`[AutoExpand] Calling setWorkspaceIntelligenceOpen(true)`);
+    setWorkspaceIntelligenceOpen(true);
+    console.log(`[AutoExpand] workspaceIntelligenceOpen=true called`);
+  }, []);
+
+  // Listen for document uploads
+  useEffect(() => {
+    console.log('[AutoExpand] Registering document-uploaded event listener');
+    
+    const handleDocumentUpload = () => {
+      console.log('[AutoExpand] document-uploaded event received');
+      triggerAutoExpand('document_upload');
+    };
+    
+    window.addEventListener('document-uploaded', handleDocumentUpload);
+    console.log('[AutoExpand] document-uploaded listener mounted');
+    
+    return () => {
+      console.log('[AutoExpand] Removing document-uploaded event listener');
+      window.removeEventListener('document-uploaded', handleDocumentUpload);
+    };
+  }, [triggerAutoExpand]);
+
+  // Listen for memory retrieval
+  useEffect(() => {
+    const handleMemoryRetrieval = () => {
+      triggerAutoExpand('memory_retrieval');
+    };
+    
+    window.addEventListener('memory-retrieved', handleMemoryRetrieval);
+    return () => window.removeEventListener('memory-retrieved', handleMemoryRetrieval);
+  }, [triggerAutoExpand]);
+
+  // Listen for RAG retrieval
+  useEffect(() => {
+    const handleRAGRetrieval = () => {
+      triggerAutoExpand('rag_retrieval');
+    };
+    
+    window.addEventListener('rag-retrieval', handleRAGRetrieval);
+    return () => window.removeEventListener('rag-retrieval', handleRAGRetrieval);
+  }, [triggerAutoExpand]);
+
+  // Listen for tool execution
+  useEffect(() => {
+    const handleToolExecution = () => {
+      triggerAutoExpand('tool_execution');
+    };
+    
+    window.addEventListener('tool-executed', handleToolExecution);
+    return () => window.removeEventListener('tool-executed', handleToolExecution);
+  }, [triggerAutoExpand]);
+
+  // Listen for system health degradation
+  useEffect(() => {
+    const handleSystemDegraded = () => {
+      triggerAutoExpand('system_degraded');
+    };
+    
+    window.addEventListener('system-degraded', handleSystemDegraded);
+    return () => window.removeEventListener('system-degraded', handleSystemDegraded);
+  }, [triggerAutoExpand]);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -482,10 +703,70 @@ export default function App() {
         </div>
       </motion.div>
 
-      {/* Workspace Intelligence Sidebar (permanent on desktop) - Independently scrollable */}
-      <div className="hidden lg:block w-[380px] flex-shrink-0 border-l border-gray-200 bg-white shadow-xl h-full">
-        <WorkspaceIntelligenceSidebar aiMonitorData={aiMonitorData} />
-      </div>
+      {/* Workspace Intelligence Sidebar (collapsible with animations) */}
+      <AnimatePresence>
+        {workspaceIntelligenceOpen && (
+          <>
+            {/* Backdrop for mobile/tablet */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (window.innerWidth < 1024) {
+                  setWorkspaceIntelligenceOpen(false);
+                }
+              }}
+              className="fixed inset-0 bg-gray-900/20 backdrop-blur-sm z-40 lg:hidden"
+            />
+
+            {/* Sidebar content with smooth slide animation */}
+            <motion.div
+              initial={{ x: "100%", opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: "100%", opacity: 0 }}
+              transition={{ 
+                type: "spring", 
+                damping: 25, 
+                stiffness: 220,
+                mass: 0.8
+              }}
+              className="fixed top-0 bottom-0 right-0 w-full sm:w-[380px] bg-white border-l border-gray-200 z-50 lg:static lg:h-full lg:flex-shrink-0 shadow-2xl flex flex-col"
+            >
+              <WorkspaceIntelligenceSidebar 
+                aiMonitorData={aiMonitorData} 
+                onClose={() => setWorkspaceIntelligenceOpen(false)}
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Right Edge Toggle Button - Always visible, draggable */}
+      {!workspaceIntelligenceOpen && (
+        <motion.button
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleButtonClick}
+          onMouseDown={handleButtonMouseDown}
+          style={{ 
+            position: 'fixed',
+            right: 0,
+            top: `${buttonY}px`,
+            transform: 'translateY(-50%)',
+            zIndex: 30,
+          }}
+          className="bg-gray-900 hover:bg-gray-800 text-white px-3 py-4 rounded-l-xl shadow-lg flex items-center gap-2 transition-colors cursor-move"
+          title="Drag to reposition • Click to open"
+        >
+          <BrainCircuit className="w-5 h-5" />
+          <span className="text-xs font-semibold whitespace-nowrap hidden sm:inline">
+            AI Workspace
+          </span>
+        </motion.button>
+      )}
     </div>
   );
 }

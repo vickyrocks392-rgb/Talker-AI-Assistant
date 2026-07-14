@@ -21,6 +21,7 @@ import {
   Zap,
   BookOpen,
   Eye,
+  X,
 } from "lucide-react";
 import {
   fetchSystemHealth,
@@ -172,9 +173,10 @@ function timeAgo(iso: string): string {
 
 interface WorkspaceIntelligenceSidebarProps {
   aiMonitorData: AIMonitorDTO | null;
+  onClose?: () => void;
 }
 
-export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebarProps> = ({ aiMonitorData }) => {
+export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebarProps> = ({ aiMonitorData, onClose }) => {
   const [health, setHealth] = useState<SystemHealthDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +194,48 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
     try {
       const data = await fetchSystemHealth();
       if (!mountedRef.current) return;
+      
+      // Check if system health became degraded or unavailable
+      const prevOverallStatus = health ? (() => {
+        const all: HealthStatus[] = [
+          health.backend.status,
+          health.database.status,
+          health.chromadb.status,
+          health.embeddings.status,
+          health.memory.status,
+          health.rag.status,
+          health.providers.groq.status,
+          health.providers.gemini.status,
+          health.providers.ollama.status,
+        ];
+        if (all.some((s) => s === "unavailable")) return "unavailable";
+        if (all.some((s) => s === "degraded")) return "degraded";
+        return "healthy";
+      })() : null;
+      
+      const newOverallStatus = (() => {
+        const all: HealthStatus[] = [
+          data.backend.status,
+          data.database.status,
+          data.chromadb.status,
+          data.embeddings.status,
+          data.memory.status,
+          data.rag.status,
+          data.providers.groq.status,
+          data.providers.gemini.status,
+          data.providers.ollama.status,
+        ];
+        if (all.some((s) => s === "unavailable")) return "unavailable";
+        if (all.some((s) => s === "degraded")) return "degraded";
+        return "healthy";
+      })();
+      
+      // Dispatch event if health became degraded or unavailable
+      if (prevOverallStatus === "healthy" && (newOverallStatus === "degraded" || newOverallStatus === "unavailable")) {
+        const healthEvent = new CustomEvent('system-degraded');
+        window.dispatchEvent(healthEvent);
+      }
+      
       setHealth(data);
       setLastUpdated(data.timestamp);
       setError(null);
@@ -204,7 +248,7 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
         setIsRefreshing(false);
       }
     }
-  }, []);
+  }, [health]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -270,15 +314,26 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
             <p className="text-[10px] text-gray-400">AI operating environment</p>
           </div>
         </div>
-        <button
-          onClick={loadHealth}
-          disabled={isRefreshing}
-          className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50"
-          title="Refresh now"
-        >
-          <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadHealth}
+            disabled={isRefreshing}
+            className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50"
+            title="Refresh now"
+          >
+            <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition"
+              title="Close sidebar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Body - Independently scrollable */}
@@ -353,7 +408,7 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
                   </div>
                 )}
                 
-                {aiMonitorData?.tools && aiMonitorData.tools.executionCount > 0 && (
+                {aiMonitorData?.tools && aiMonitorData.tools.executionCount > 0 ? (
                   <div className="border-t border-gray-100 pt-1.5 mt-1.5">
                     <MetricRow 
                       label="Tools" 
@@ -364,6 +419,16 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
                         </span>
                       }
                     />
+                  </div>
+                ) : (
+                  <div className="border-t border-gray-100 pt-2 mt-1.5">
+                    <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2">
+                      <Wrench className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-gray-600">No Tool Usage Yet</p>
+                        <p className="text-[10px] text-gray-400">Tool activity will appear here.</p>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -463,7 +528,7 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
                   </span>
                 </div>
                 
-                {activeDocuments.length > 0 && (
+                {activeDocuments.length > 0 ? (
                   <div className="space-y-1.5 pt-1.5 border-t border-gray-100">
                     {activeDocuments.map((doc) => (
                       <div
@@ -480,6 +545,16 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
                       </div>
                     ))}
                   </div>
+                ) : (
+                  <div className="pt-2 border-t border-gray-100">
+                    <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2">
+                      <FileText className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-gray-600">No Active Documents Yet</p>
+                        <p className="text-[10px] text-gray-400">Attach documents to enable retrieval.</p>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
                 <div className="flex items-center justify-between pt-1.5 border-t border-gray-100">
@@ -488,6 +563,30 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
                     {aiMonitorData?.memory ? aiMonitorData.memory.entryCount : "—"}
                   </span>
                 </div>
+
+                {!aiMonitorData?.memory && (
+                  <div className="pt-2 border-t border-gray-100">
+                    <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2">
+                      <Database className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-gray-600">No Memory Retrieved Yet</p>
+                        <p className="text-[10px] text-gray-400">Cross-conversation memory will appear here.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {!aiMonitorData && (
+                  <div className="pt-2 border-t border-gray-100">
+                    <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2">
+                      <Activity className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium text-gray-600">No Workspace Activity Yet</p>
+                        <p className="text-[10px] text-gray-400">Start chatting to activate workspace intelligence.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] text-gray-500">Retrieval Mode</span>

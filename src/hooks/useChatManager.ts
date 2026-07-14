@@ -253,6 +253,22 @@ export const useChatManager = ({
         if (result.aiMonitor) {
           setAiMonitorData(result.aiMonitor);
           console.log("[AI Monitor DEBUG] useChatManager setAiMonitorData called");
+          
+          // Dispatch events for sidebar auto-expand based on AI monitor data
+          if (result.aiMonitor.memory && result.aiMonitor.memory.entryCount > 0) {
+            const memoryEvent = new CustomEvent('memory-retrieved');
+            window.dispatchEvent(memoryEvent);
+          }
+          
+          if (result.aiMonitor.rag && (result.aiMonitor.rag.chunkCount > 0 || result.aiMonitor.rag.activeDocCount > 0)) {
+            const ragEvent = new CustomEvent('rag-retrieval');
+            window.dispatchEvent(ragEvent);
+          }
+          
+          if (result.aiMonitor.tools && result.aiMonitor.tools.executionCount > 0) {
+            const toolEvent = new CustomEvent('tool-executed');
+            window.dispatchEvent(toolEvent);
+          }
         } else {
           console.log("[AI Monitor DEBUG] useChatManager result.aiMonitor is undefined");
         }
