@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Search, X, Trash2, Plus, MessageSquare, BookOpen } from "lucide-react";
+import { Search, X, Trash2, Plus, MessageSquare, BookOpen, Sparkles, Lightbulb, FileText, MessageCircle } from "lucide-react";
 import type { Conversation, Message } from "../types";
 
 interface ChatSessionsStripProps {
@@ -10,6 +10,8 @@ interface ChatSessionsStripProps {
   onCreateSession: () => void;
   onDeleteSession: (conversationId: string) => void;
   loading?: boolean;
+  showOnboarding?: boolean;
+  onDismissOnboarding?: () => void;
 }
 
 export const ChatSessionsStrip: React.FC<ChatSessionsStripProps> = ({
@@ -19,7 +21,9 @@ export const ChatSessionsStrip: React.FC<ChatSessionsStripProps> = ({
   messages,
   onCreateSession,
   onDeleteSession,
-  loading = false
+  loading = false,
+  showOnboarding = false,
+  onDismissOnboarding,
 }) => {
   const [searchQuery, setSearchQuery] = React.useState<string>("");
 
@@ -75,6 +79,99 @@ export const ChatSessionsStrip: React.FC<ChatSessionsStripProps> = ({
         )}
       </div>
 
+      {/* Onboarding card for first-time users */}
+      {showOnboarding && conversations.length === 0 && (
+        <div className="p-4 rounded-xl border border-red-100 bg-gradient-to-br from-red-50 to-orange-50 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-red-600" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Welcome to Talker AI</h3>
+              <p className="text-[11px] text-gray-500">Your intelligent workspace</p>
+            </div>
+          </div>
+          <p className="text-xs text-gray-600 mb-3 leading-relaxed">
+            Try asking:
+          </p>
+          <div className="space-y-1.5">
+            <button
+              onClick={() => {
+                onCreateSession();
+                // Small delay to let the conversation be created
+                setTimeout(() => {
+                  const input = document.querySelector<HTMLTextAreaElement>('textarea[placeholder*="message"]');
+                  if (input) {
+                    input.value = "Summarize my resume";
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                  }
+                }, 300);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/80 hover:bg-white border border-red-100 text-xs text-gray-700 hover:text-gray-900 transition cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5 text-red-500" />
+              Summarize my resume
+            </button>
+            <button
+              onClick={() => {
+                onCreateSession();
+                setTimeout(() => {
+                  const input = document.querySelector<HTMLTextAreaElement>('textarea[placeholder*="message"]');
+                  if (input) {
+                    input.value = "Compare these two documents";
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                  }
+                }, 300);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/80 hover:bg-white border border-red-100 text-xs text-gray-700 hover:text-gray-900 transition cursor-pointer"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-red-500" />
+              Compare documents
+            </button>
+            <button
+              onClick={() => {
+                onCreateSession();
+                setTimeout(() => {
+                  const input = document.querySelector<HTMLTextAreaElement>('textarea[placeholder*="message"]');
+                  if (input) {
+                    input.value = "Explain this architecture";
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                  }
+                }, 300);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/80 hover:bg-white border border-red-100 text-xs text-gray-700 hover:text-gray-900 transition cursor-pointer"
+            >
+              <Lightbulb className="w-3.5 h-3.5 text-red-500" />
+              Explain this architecture
+            </button>
+            <button
+              onClick={() => {
+                onCreateSession();
+                setTimeout(() => {
+                  const input = document.querySelector<HTMLTextAreaElement>('textarea[placeholder*="message"]');
+                  if (input) {
+                    input.value = "Search my uploaded files";
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                  }
+                }, 300);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/80 hover:bg-white border border-red-100 text-xs text-gray-700 hover:text-gray-900 transition cursor-pointer"
+            >
+              <Search className="w-3.5 h-3.5 text-red-500" />
+              Search my uploaded files
+            </button>
+          </div>
+          {onDismissOnboarding && (
+            <button
+              onClick={onDismissOnboarding}
+              className="mt-3 w-full text-[11px] text-gray-400 hover:text-gray-600 transition cursor-pointer text-center"
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Sessions list */}
       <div className="flex flex-col gap-1.5">
         {loading ? (
@@ -90,17 +187,28 @@ export const ChatSessionsStrip: React.FC<ChatSessionsStripProps> = ({
               </div>
             </div>
           ))
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-8 px-4">
-            <p className="text-sm text-gray-500">
-              {searchQuery.trim() ? "No conversations found" : "No conversations yet"}
+        ) : filtered.length === 0 && !showOnboarding ? (
+          // Premium empty state
+          <div className="text-center py-10 px-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center mx-auto mb-4">
+              <MessageCircle className="w-6 h-6 text-red-400" />
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">
+              {searchQuery.trim() ? "No conversations found" : "No Conversations Yet"}
+            </h3>
+            <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+              {searchQuery.trim()
+                ? "Try a different search term"
+                : "Start a conversation to begin building your workspace."
+              }
             </p>
             {!searchQuery.trim() && (
               <button
                 onClick={onCreateSession}
-                className="mt-3 text-sm text-red-600 hover:text-red-700 font-medium transition"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-xl transition cursor-pointer"
               >
-                Start your first conversation
+                <Plus className="w-4 h-4" />
+                Start a conversation
               </button>
             )}
           </div>

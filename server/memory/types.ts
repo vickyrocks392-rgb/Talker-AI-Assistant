@@ -15,6 +15,8 @@ export interface Conversation {
   title: string;
   createdAt: string;
   updatedAt: string;
+  /** Whether the title was auto-generated (0 = manual/managed, 1 = auto-generated) */
+  titleGenerated?: number;
   /** Active documents for this conversation (persisted for conversation-level document memory) */
   activeDocuments?: ChatAttachment[];
 }

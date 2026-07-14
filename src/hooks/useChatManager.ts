@@ -123,12 +123,10 @@ export const useChatManager = ({
   // ── Refresh the active conversation from the backend ─────────────
 
   const refreshActiveConversation = useCallback(async () => {
-    if (!activeConversationId) return;
-
     try {
       const [list, detail] = await Promise.all([
         fetchConversations(),
-        getConversation(activeConversationId),
+        activeConversationId ? getConversation(activeConversationId) : null,
       ]);
 
       const sorted = [...list].sort(
@@ -137,17 +135,19 @@ export const useChatManager = ({
       );
       setConversations(sorted);
 
-      // Map backend Message to frontend Message type (including attachments)
-      const mapped: Message[] = detail.messages.map((m) => ({
-        id: m.id,
-        conversationId: m.conversationId,
-        role: m.role,
-        content: m.content,
-        createdAt: m.createdAt,
-        attachments: m.attachments,
-      }));
+      if (detail && activeConversationId) {
+        // Map backend Message to frontend Message type (including attachments)
+        const mapped: Message[] = detail.messages.map((m) => ({
+          id: m.id,
+          conversationId: m.conversationId,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+          attachments: m.attachments,
+        }));
 
-      setMessages(mapped);
+        setMessages(mapped);
+      }
     } catch (err) {
       console.error("Failed to refresh conversation:", err);
     }
@@ -258,7 +258,13 @@ export const useChatManager = ({
         }
 
         // After response, refresh from backend (source of truth)
+        console.log(`[TitleGenerator] About to refresh conversation list`);
         await refreshActiveConversation();
+        console.log(`[TitleGenerator] Conversation list refreshed. Current conversations:`, conversations.map(c => ({ id: c.id, title: c.title, titleGenerated: c.titleGenerated })));
+        
+        // Re-fetch conversations directly to log the full list
+        const freshList = await (await fetch("/api/conversations")).json();
+        console.log(`[TitleGenerator] Frontend received conversation list:`, JSON.stringify(freshList.map((c: any) => ({ id: c.id, title: c.title, titleGenerated: c.titleGenerated })), null, 2));
 
         setLoading(false);
 

@@ -50,6 +50,7 @@ export interface Conversation {
   title: string;
   createdAt: string;
   updatedAt: string;
+  titleGenerated?: number;
 }
 
 /**

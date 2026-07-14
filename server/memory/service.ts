@@ -12,6 +12,7 @@ import {
   getConversation as repoGetConversation,
   listConversations as repoListConversations,
   renameConversation as repoRenameConversation,
+  setConversationTitle as repoSetConversationTitle,
   deleteConversation as repoDeleteConversation,
   saveMessage as repoSaveMessage,
   getMessages as repoGetMessages,
@@ -34,7 +35,7 @@ class MemoryService {
   /**
    * Creates a new conversation with the given title.
    */
-  createConversation(title: string = "New conversation"): Conversation {
+  createConversation(title: string = "New Conversation"): Conversation {
     return repoCreateConversation(title);
   }
 
@@ -53,10 +54,19 @@ class MemoryService {
   }
 
   /**
-   * Renames a conversation.
+   * Renames a conversation (manual rename). Sets title_generated=0.
    */
   renameConversation(id: string, title: string): Conversation | undefined {
     return repoRenameConversation(id, title);
+  }
+
+  /**
+   * Sets a conversation title only if it hasn't been manually renamed.
+   * Used for auto-generated titles. Returns undefined if the conversation
+   * was manually renamed (title_generated = 0).
+   */
+  setConversationTitle(id: string, title: string): Conversation | undefined {
+    return repoSetConversationTitle(id, title);
   }
 
   /**

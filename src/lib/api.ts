@@ -14,6 +14,7 @@ export interface ConversationDTO {
   title: string;
   createdAt: string;
   updatedAt: string;
+  titleGenerated?: number;
 }
 
 export interface ChatAttachment {

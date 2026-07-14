@@ -27,6 +27,7 @@ import { ContextBuilder } from "../context";
 import { orchestrate } from "../orchestrator";
 import { createAIMonitor } from "../monitor";
 import { getConfig } from "../../config/env";
+import { generateTitle } from "./titleGenerator";
 import type { ChatResponse, AIMonitorDataDTO } from "../types";
 import type { Persona, ConversationMessage } from "../types";
 import type { ChatAttachment } from "../../../shared/types";
@@ -273,7 +274,37 @@ export async function handleNonStreaming(
     memoryService.saveMessage(conversationId, "assistant", parsed.replyText);
   }
 
-  // Step 5: Persist Q&A pair to global memory for site-wide reuse
+  // Step 5: Generate title if this is the first user + assistant exchange
+  if (conversationId) {
+    try {
+      const conversation = memoryService.getConversation(conversationId);
+      // Only generate if title is "New Conversation" (title_generated = 1)
+      if (conversation && conversation.titleGenerated === 1) {
+        logger.debug(`[TitleGenerator] Generating title for conversation ${conversationId}...`);
+        const messages = memoryService.getMessages(conversationId);
+        const convMessages: ConversationMessage[] = messages.map(m => ({
+          role: m.role as "user" | "assistant",
+          text: m.content,
+        }));
+        const title = await generateTitle(convMessages);
+        logger.debug(`[TitleGenerator] Generated title: "${title}"`);
+        // Persist the title — this is synchronous (SQLite)
+        const updated = memoryService.setConversationTitle(conversationId, title);
+        if (updated) {
+          logger.debug(`[TitleGenerator] Persisting title: "${title}" for conversation ${conversationId}`);
+        } else {
+          logger.debug(`[TitleGenerator] Skipping persistence — conversation may have been manually renamed (title_generated=0)`);
+        }
+      } else {
+        const reason = !conversation ? "conversation not found" : `title_generated=${conversation.titleGenerated}`;
+        logger.debug(`[TitleGenerator] Skipping generation: ${reason}`);
+      }
+    } catch (error) {
+      logger.warn("[TitleGenerator] Title generation failed (non-blocking)", error);
+    }
+  }
+
+  // Step 6: Persist Q&A pair to global memory for site-wide reuse
   // This makes the answer available across all conversations for the same user.
   // Only persist meaningful Q&A pairs (non-empty, non-trivial responses).
   if (parsed.replyText && parsed.replyText.trim().length > 10) {
@@ -453,114 +484,126 @@ export async function handleStreaming(
       }
 
       if (chunk.done) {
+        let parsed;
         try {
-          const parsed = parseChatResponse(fullContent);
-
-          // Step 4: Persist to memory after successful stream completion (with attachments for user message)
-          if (conversationId) {
-            memoryService.saveMessage(conversationId, "user", text, resolvedAttachments);
-            memoryService.saveMessage(conversationId, "assistant", parsed.replyText);
-
-            logger.debug("Messages persisted to memory", {
-              conversationId,
-              userMessage: text,
-              assistantMessage: parsed.replyText,
-              replyLength: parsed.replyText.length,
-              mapType: parsed.mapAction.type,
-              attachmentsCount: resolvedAttachments?.length ?? 0,
-            });
-          }
-
-          // Step 5: Persist Q&A pair to global memory for site-wide reuse
-          if (parsed.replyText && parsed.replyText.trim().length > 10) {
-            try {
-              memoryService.saveGlobalMemory(text, parsed.replyText);
-              logger.debug("Q&A pair persisted to global memory (streaming)");
-            } catch (error) {
-              logger.warn("Failed to persist to global memory (streaming)", error);
-            }
-          }
-
-          // ── DEBUG: AI Monitor creation ─────────────────────────────────────
-          console.log("[AI Monitor DEBUG] Starting monitor creation, chunk.model:", chunk.model);
-          const providerInfo = resolveProviderInfo(chunk.model);
-          const monitor = createAIMonitor(providerInfo.name, providerInfo.model);
-
-          // Set conversation mode based on execution plan and attachments
-          const conversationMode = mapExecutionModeToConversationMode(
-            plan.mode,
-            plan.useMemory,
-            plan.useRag || hasAttachments,
-            plan.useTools,
-            hasAttachments,
-          );
-          monitor.setMode(conversationMode as any);
-
-          // Record memory metadata from context builder
-          if (metadata.hasMemoryContext) {
-            monitor.recordMemory({
-              entryCount: metadata.memoryEntryCount,
-              avgConfidence: metadata.memoryAvgConfidence,
-            });
-          }
-
-          // Record RAG metadata from context builder
-          if (metadata.hasRagContext) {
-            monitor.recordRag({
-              activeDocCount: resolvedAttachments?.length ?? 0,
-              chunkCount: metadata.ragChunkCount,
-            });
-          }
-
-          // Record tool metadata from context builder
-          if (metadata.hasToolResult) {
-            monitor.recordTool({
-              executionCount: metadata.toolName ? 1 : 0,
-              toolNames: metadata.toolName ? [metadata.toolName] : [],
-            });
-          }
-
-          // End the monitor (captures latency)
-          monitor.end();
-          const monitorData = monitor.getData();
-
-          // Convert to DTO for the frontend
-          const aiMonitorDTO: AIMonitorDataDTO = {
-            provider: monitorData.provider.name,
-            model: monitorData.provider.model,
-            latencyMs: monitorData.latencyMs,
-            mode: monitorData.mode,
-            memory: monitorData.memory ? {
-              entryCount: monitorData.memory.entryCount,
-              avgConfidence: monitorData.memory.avgConfidence,
-            } : undefined,
-            rag: monitorData.rag ? {
-              activeDocCount: monitorData.rag.activeDocCount,
-              chunkCount: monitorData.rag.chunkCount,
-            } : undefined,
-            tools: monitorData.tools ? {
-              executionCount: monitorData.tools.executionCount,
-              toolNames: monitorData.tools.toolNames,
-            } : undefined,
-          };
-
-          const chatResponse: ChatResponse = {
-            replyText: parsed.replyText,
-            mapAction: parsed.mapAction,
-            searchSources: [],
-            aiMonitor: aiMonitorDTO,
-          };
-
-          console.log("[AI Monitor DEBUG] Calling onDone with chatResponse");
-          onDone(chatResponse);
-        } catch {
-          logger.warn("Failed to parse streamed response");
+          parsed = parseChatResponse(fullContent);
+        } catch (parseError) {
+          logger.warn("Failed to parse streamed response", parseError);
           onDone({
             replyText: fullContent,
             mapAction: { type: "none" },
             searchSources: [],
           });
+          return;
         }
+
+        // Step 4: Persist to memory after successful stream completion (with attachments for user message)
+        if (conversationId) {
+          memoryService.saveMessage(conversationId, "user", text, resolvedAttachments);
+          memoryService.saveMessage(conversationId, "assistant", parsed.replyText);
+        }
+
+        // Step 5: Generate title if this is the first user + assistant exchange (streaming)
+        if (conversationId) {
+          try {
+            const conversation = memoryService.getConversation(conversationId);
+            if (conversation && conversation.titleGenerated === 1) {
+              const msgs = memoryService.getMessages(conversationId);
+              const convMessages: ConversationMessage[] = msgs.map(m => ({
+                role: m.role as "user" | "assistant",
+                text: m.content,
+              }));
+              const title = await generateTitle(convMessages);
+              const updated = memoryService.setConversationTitle(conversationId, title);
+              if (updated) {
+                logger.info(`[TitleGenerator] Persisted title: "${title}" for conversation ${conversationId}`);
+              }
+            }
+          } catch (error) {
+            logger.warn("[TitleGenerator] Title generation failed (non-blocking, streaming)", error);
+          }
+        }
+
+        // Step 6: Persist Q&A pair to global memory for site-wide reuse
+        if (parsed.replyText && parsed.replyText.trim().length > 10) {
+          try {
+            memoryService.saveGlobalMemory(text, parsed.replyText);
+            logger.debug("Q&A pair persisted to global memory (streaming)");
+          } catch (error) {
+            logger.warn("Failed to persist to global memory (streaming)", error);
+          }
+        }
+
+        // ── AI Monitor: Build metadata from the request lifecycle ─────────
+        const providerInfo = resolveProviderInfo(chunk.model);
+        const monitor = createAIMonitor(providerInfo.name, providerInfo.model);
+
+        // Set conversation mode based on execution plan and attachments
+        const conversationMode = mapExecutionModeToConversationMode(
+          plan.mode,
+          plan.useMemory,
+          plan.useRag || hasAttachments,
+          plan.useTools,
+          hasAttachments,
+        );
+        monitor.setMode(conversationMode as any);
+
+        // Record memory metadata from context builder
+        if (metadata.hasMemoryContext) {
+          monitor.recordMemory({
+            entryCount: metadata.memoryEntryCount,
+            avgConfidence: metadata.memoryAvgConfidence,
+          });
+        }
+
+        // Record RAG metadata from context builder
+        if (metadata.hasRagContext) {
+          monitor.recordRag({
+            activeDocCount: resolvedAttachments?.length ?? 0,
+            chunkCount: metadata.ragChunkCount,
+          });
+        }
+
+        // Record tool metadata from context builder
+        if (metadata.hasToolResult) {
+          monitor.recordTool({
+            executionCount: metadata.toolName ? 1 : 0,
+            toolNames: metadata.toolName ? [metadata.toolName] : [],
+          });
+        }
+
+        // End the monitor (captures latency)
+        monitor.end();
+        const monitorData = monitor.getData();
+
+        // Convert to DTO for the frontend
+        const aiMonitorDTO: AIMonitorDataDTO = {
+          provider: monitorData.provider.name,
+          model: monitorData.provider.model,
+          latencyMs: monitorData.latencyMs,
+          mode: monitorData.mode,
+          memory: monitorData.memory ? {
+            entryCount: monitorData.memory.entryCount,
+            avgConfidence: monitorData.memory.avgConfidence,
+          } : undefined,
+          rag: monitorData.rag ? {
+            activeDocCount: monitorData.rag.activeDocCount,
+            chunkCount: monitorData.rag.chunkCount,
+          } : undefined,
+          tools: monitorData.tools ? {
+            executionCount: monitorData.tools.executionCount,
+            toolNames: monitorData.tools.toolNames,
+          } : undefined,
+        };
+
+        const chatResponse: ChatResponse = {
+          replyText: parsed.replyText,
+          mapAction: parsed.mapAction,
+          searchSources: [],
+          aiMonitor: aiMonitorDTO,
+        };
+
+        onDone(chatResponse);
       }
     }
   } catch (streamError) {

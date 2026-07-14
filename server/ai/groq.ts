@@ -69,40 +69,23 @@ export class GroqProvider implements AIProvider {
    * Send a non-streaming chat request to Groq.
    * Returns a response shaped like OllamaResponse for interface compatibility.
    */
-   async chat(request: {
-     messages: OllamaMessage[];
-     temperature?: number;
-     stream?: boolean;
-   }): Promise<OllamaResponse> {
-     // ── DEBUG: GroqProvider message assembly ───────────────────────────────
-     const systemMessages = request.messages.filter((m) => m.role === "system");
-     const userMessages = request.messages.filter((m) => m.role === "user");
-     const assistantMessages = request.messages.filter((m) => m.role === "assistant");
-     const ragMessage = systemMessages.find((m) => m.content.includes("Retrieved Context:"));
-     
-     logger.info("=== GroqProvider Debug ===");
-     logger.info("actual message count sent: " + request.messages.length);
-     logger.info("system messages: " + systemMessages.length);
-     logger.info("user messages: " + userMessages.length);
-     logger.info("assistant messages: " + assistantMessages.length);
-     logger.info("RAG context message exists: " + (ragMessage ? "yes" : "no"));
-     if (ragMessage) {
-       logger.info("RAG context size in chars: " + ragMessage.content.length);
-     }
-     // ── END DEBUG ───────────────────────────────────────────────────────────
+  async chat(request: {
+    messages: OllamaMessage[];
+    temperature?: number;
+    stream?: boolean;
+  }): Promise<OllamaResponse> {
+    const payload: GroqChatRequest = {
+      model: this.modelName,
+      messages: request.messages,
+      temperature: request.temperature ?? 0.2,
+      stream: false,
+      response_format: { type: "json_object" },
+    };
 
-     const payload: GroqChatRequest = {
-       model: this.modelName,
-       messages: request.messages,
-       temperature: request.temperature ?? 0.2,
-       stream: false,
-       response_format: { type: "json_object" },
-     };
-
-     logger.debug(`Chat request to ${this.modelName}`, {
-       messageCount: request.messages.length,
-       temperature: payload.temperature,
-     });
+    logger.debug(`Chat request to ${this.modelName}`, {
+      messageCount: request.messages.length,
+      temperature: payload.temperature,
+    });
 
     return withRetry(async () => {
       const response = await fetch(`${GROQ_API_BASE}/chat/completions`, {

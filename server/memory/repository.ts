@@ -32,13 +32,17 @@ export function createConversation(title: string): Conversation {
   const now = new Date().toISOString();
 
   const stmt = db.prepare(`
-    INSERT INTO conversations (id, title, created_at, updated_at)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO conversations (id, title, created_at, updated_at, title_generated)
+    VALUES (?, ?, ?, ?, ?)
   `);
 
-  stmt.run(id, title, now, now);
+  // Mark as title_generated=1 if this is the default "New Conversation" title
+  const isGenerated = title === "New Conversation" ? 1 : 0;
+  stmt.run(id, title, now, now, isGenerated);
 
-  return { id, title, createdAt: now, updatedAt: now, activeDocuments: [] };
+  console.log(`[TitleGenerator] Conversation created: id=${id}, title="${title}", title_generated=${isGenerated}`);
+
+  return { id, title, createdAt: now, updatedAt: now, titleGenerated: isGenerated, activeDocuments: [] };
 }
 
 /**
@@ -48,7 +52,7 @@ export function getConversation(id: string): Conversation | undefined {
   const db = getDatabase();
 
   const stmt = db.prepare(`
-    SELECT id, title, created_at AS createdAt, updated_at AS updatedAt, active_documents AS activeDocuments
+    SELECT id, title, created_at AS createdAt, updated_at AS updatedAt, active_documents AS activeDocuments, title_generated AS titleGenerated
     FROM conversations
     WHERE id = ?
   `);
@@ -59,6 +63,7 @@ export function getConversation(id: string): Conversation | undefined {
     createdAt: string;
     updatedAt: string;
     activeDocuments: string | null;
+    titleGenerated: number | null;
   } | undefined;
 
   if (!row) {
@@ -89,6 +94,7 @@ export function getConversation(id: string): Conversation | undefined {
     title: row.title,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    titleGenerated: row.titleGenerated ?? 0,
     activeDocuments: filteredDocs,
   };
 }
@@ -100,7 +106,7 @@ export function listConversations(): Conversation[] {
   const db = getDatabase();
 
   const stmt = db.prepare(`
-    SELECT id, title, created_at AS createdAt, updated_at AS updatedAt, active_documents AS activeDocuments
+    SELECT id, title, created_at AS createdAt, updated_at AS updatedAt, active_documents AS activeDocuments, title_generated AS titleGenerated
     FROM conversations
     ORDER BY updated_at DESC
   `);
@@ -111,6 +117,7 @@ export function listConversations(): Conversation[] {
     createdAt: string;
     updatedAt: string;
     activeDocuments: string | null;
+    titleGenerated: number | null;
   }>;
 
   // Get valid document IDs once for filtering
@@ -139,14 +146,16 @@ export function listConversations(): Conversation[] {
       title: row.title,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      titleGenerated: row.titleGenerated ?? 0,
       activeDocuments: filteredDocs,
     };
   });
 }
 
 /**
- * Renames a conversation. Returns the updated conversation, or undefined
- * if the conversation does not exist.
+ * Renames a conversation (manual rename). Sets title_generated=0 to
+ * prevent auto-generation from overwriting this title.
+ * Returns the updated conversation, or undefined if not found.
  */
 export function renameConversation(
   id: string,
@@ -157,7 +166,7 @@ export function renameConversation(
 
   const stmt = db.prepare(`
     UPDATE conversations
-    SET title = ?, updated_at = ?
+    SET title = ?, updated_at = ?, title_generated = 0
     WHERE id = ?
   `);
 
@@ -168,6 +177,49 @@ export function renameConversation(
   }
 
   return getConversation(id);
+}
+
+/**
+ * Updates a conversation's title but preserves the title_generated flag.
+ * Used for auto-generated titles — only updates if the current title
+ * is still "New Conversation" (i.e., title_generated = 1).
+ * Returns the updated conversation, or undefined if not found or
+ * if the conversation has been manually renamed (title_generated = 0).
+ */
+export function setConversationTitle(
+  id: string,
+  title: string,
+): Conversation | undefined {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+
+  // Only update if title_generated = 1 (i.e., still "New Conversation")
+  const stmt = db.prepare(`
+    UPDATE conversations
+    SET title = ?, updated_at = ?
+    WHERE id = ? AND title_generated = 1
+  `);
+
+  logger.debug(`[TitleGenerator] Calling setConversationTitle(id=${id}, title="${title}")`);
+  const result = stmt.run(title, now, id);
+  logger.debug(`[TitleGenerator] Rows updated: ${result.changes}`);
+
+  if (result.changes === 0) {
+    // Check why — log the current state
+    const check = db.prepare("SELECT id, title, title_generated FROM conversations WHERE id = ?").get(id) as { id: string; title: string; title_generated: number } | undefined;
+    if (check) {
+      logger.debug(`[TitleGenerator] setConversationTitle failed: current state — title="${check.title}", title_generated=${check.title_generated}`);
+    } else {
+      logger.debug(`[TitleGenerator] setConversationTitle failed: conversation ${id} not found`);
+    }
+    return undefined;
+  }
+
+  const updated = getConversation(id);
+  if (updated) {
+    logger.debug(`[TitleGenerator] Conversation title after update: "${updated.title}"`);
+  }
+  return updated;
 }
 
 /**

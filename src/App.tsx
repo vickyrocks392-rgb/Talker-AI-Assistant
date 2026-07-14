@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   WifiOff,
   Settings as SettingsIcon,
@@ -130,6 +130,25 @@ export default function App() {
   const [activeSettings, setActiveSettings] = useState<boolean>(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // First-run experience / onboarding state
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
+    const dismissed = localStorage.getItem("talker_onboarding_dismissed");
+    return dismissed !== "true";
+  });
+
+  const dismissOnboarding = useCallback(() => {
+    setShowOnboarding(false);
+    localStorage.setItem("talker_onboarding_dismissed", "true");
+  }, []);
+
+  // Auto-dismiss onboarding when first conversation is created
+  useEffect(() => {
+    if (conversations.length > 0 && showOnboarding) {
+      setShowOnboarding(false);
+      localStorage.setItem("talker_onboarding_dismissed", "true");
+    }
+  }, [conversations.length, showOnboarding]);
 
   // Auto-open sidebar on desktop sized devices
   useEffect(() => {
@@ -266,6 +285,8 @@ export default function App() {
                     onCreateSession={createNewSession}
                     onDeleteSession={deleteSession}
                     loading={loading}
+                    showOnboarding={showOnboarding}
+                    onDismissOnboarding={dismissOnboarding}
                   />
                 </div>
               </div>
