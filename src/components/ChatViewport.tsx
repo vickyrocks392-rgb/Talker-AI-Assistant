@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Mic, MicOff, ArrowRight, BrainCircuit, Calendar, Sparkles, MessageSquare, Code, Search, BookOpen, Paperclip, X, FileText, Loader2, Upload, AlertCircle } from "lucide-react";
+import { Mic, MicOff, ArrowRight, BrainCircuit, Sparkles, MessageSquare, Code, BookOpen, Paperclip, Upload, AlertCircle } from "lucide-react";
 import type { Message } from "../types";
 import type { ChatAttachment, AIMonitorDTO } from "../lib/api";
 import { MessageItem } from "./MessageItem";
@@ -472,7 +472,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
             )}
           </AnimatePresence>
 
-          <div className="flex items-end gap-2">
+          <div className="flex items-center gap-2">
             <button 
               type="button" 
               onClick={handlePaperclipClick}
@@ -505,7 +505,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 onKeyDown={handleKeyDown}
                 placeholder="Message Talker AI..." 
                 rows={1}
-                className="w-full bg-white border border-gray-300 focus:border-red-500 rounded-xl py-3 pl-4 pr-14 text-sm text-gray-900 focus:outline-none transition-all duration-200 resize-none placeholder-gray-500 custom-scrollbar"
+                className="w-full bg-white border border-gray-300 focus:border-red-500 rounded-xl py-3 pl-4 pr-12 text-sm text-gray-900 focus:outline-none transition-all duration-200 resize-none placeholder-gray-500"
                 disabled={loading}
                 onInput={(e) => { 
                   const t = e.currentTarget; 
@@ -514,14 +514,15 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 }}
                 style={{ 
                   scrollbarWidth: 'thin',
-                  scrollbarColor: 'rgb(156, 163, 175) transparent'
+                  scrollbarColor: 'rgb(156, 163, 175) transparent',
+                  paddingRight: '44px'
                 }}
                 aria-label="Message input"
               />
               <button 
                 onClick={handleSend} 
                 disabled={loading || !inputText.trim()}
-                className={`absolute right-2 bottom-2 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer button-press ${
+                className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer button-press ${
                   inputText.trim() && !loading 
                     ? "bg-red-600 text-white hover:bg-red-700 hover:scale-110 shadow-sm" 
                     : "bg-gray-100 text-gray-400 cursor-not-allowed"
@@ -532,14 +533,6 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
-          </div>
-
-          <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-gray-500">
-            <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Enter</kbd>
-            <span>to send</span>
-            <span className="text-gray-300">•</span>
-            <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Shift + Enter</kbd>
-            <span>for new line</span>
           </div>
         </div>
       </div>

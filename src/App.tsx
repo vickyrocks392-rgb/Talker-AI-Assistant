@@ -1,16 +1,11 @@
 import { useState, useEffect } from "react";
 import {
-  LogIn,
   WifiOff,
-  User,
   Settings as SettingsIcon,
   Menu,
   X,
   BrainCircuit,
-  VolumeX,
   Plus,
-  Search,
-  MessageSquare,
   BookOpen,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -275,57 +270,20 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Sidebar bottom block: User profile and settings - Fixed */}
+              {/* Sidebar bottom block: Settings - Fixed */}
               <div className="border-t border-gray-200 pt-4 p-5 flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-2">
-                  {currentUser ? (
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      {currentUser.photoURL ? (
-                        <img
-                          src={currentUser.photoURL}
-                          className="w-8 h-8 rounded-full flex-shrink-0"
-                          alt="avatar"
-                        />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center flex-shrink-0">
-                          <User className="w-4 h-4 text-gray-600" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <span className="text-sm text-gray-900 font-medium block truncate">
-                          {currentUser.displayName || currentUser.email}
-                        </span>
-                        <button
-                          onClick={logoutOfApp}
-                          className="text-red-600 hover:text-red-700 text-xs font-medium transition cursor-pointer"
-                        >
-                          Sign Out
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={loginWithGoogle}
-                      className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 text-sm font-semibold py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer w-full"
-                    >
-                      <LogIn className="w-4 h-4" />
-                      Sign In
-                    </button>
-                  )}
-
-                  {/* Settings popup trigger */}
-                  <button
-                    onClick={() => setActiveSettings(!activeSettings)}
-                    className={`p-2 rounded-xl transition border flex-shrink-0 cursor-pointer ${
-                      activeSettings
-                        ? "bg-red-50 border-red-200 text-red-600"
-                        : "bg-white border-gray-200 text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                    }`}
-                    title="Settings"
-                  >
-                    <SettingsIcon className="w-4 h-4" />
-                  </button>
-                </div>
+                <button
+                  onClick={() => setActiveSettings(!activeSettings)}
+                  className={`w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 px-4 rounded-xl transition cursor-pointer ${
+                    activeSettings
+                      ? "bg-red-50 text-red-700 border border-red-200"
+                      : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
+                  }`}
+                  title="Settings"
+                >
+                  <SettingsIcon className="w-4 h-4" />
+                  Settings
+                </button>
               </div>
             </motion.div>
           </>

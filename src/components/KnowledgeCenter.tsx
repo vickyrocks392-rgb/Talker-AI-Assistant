@@ -217,7 +217,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
     return `${Math.floor(diff / 86400)}d ago`;
   };
 
-  const activeDocument = documents.find(d => d.isActive) || documents[0];
+  const activeDocument = documents.find(d => d.isActive);
 
   return (
     <div className="flex flex-col h-full min-h-0">
