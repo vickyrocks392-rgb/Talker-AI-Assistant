@@ -124,7 +124,13 @@ async function checkOllamaReachable(): Promise<boolean> {
 
 /**
  * Check if a cloud provider (Groq / Gemini) is configured and reachable.
- * Reachability is verified with a lightweight auth/connectivity probe.
+ * Uses the same API key and configuration as the runtime provider implementation.
+ *
+ * For Groq: uses the chat completions endpoint with a minimal request,
+ * matching what the actual GroqProvider class does at runtime.
+ *
+ * For Gemini: uses the models list endpoint with the API key in the query
+ * string, matching the actual GeminiProvider configuration.
  */
 async function checkCloudProvider(
   name: "groq" | "gemini",
@@ -142,17 +148,38 @@ async function checkCloudProvider(
     };
   }
 
-  // Lightweight connectivity probe (no inference, avoids rate limits).
+  // Use the same endpoint and auth mechanism as the runtime provider.
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2_000);
+    const timeout = setTimeout(() => controller.abort(), 5_000);
 
-    const url =
-      name === "groq"
-        ? "https://api.groq.com/openai/v1/models"
-        : `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+    let response: Response;
 
-    const response = await fetch(url, { signal: controller.signal });
+    if (name === "groq") {
+      // Use the same chat completions endpoint as GroqProvider.chat()
+      // with a minimal request to verify the API key works for actual inference.
+      response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.groq.modelName,
+          messages: [{ role: "user", content: "ping" }],
+          max_tokens: 1,
+          stream: false,
+        }),
+        signal: controller.signal,
+      });
+    } else {
+      // Gemini: use models list endpoint (same as before, matches config)
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+        { signal: controller.signal },
+      );
+    }
+
     clearTimeout(timeout);
 
     if (response.ok) {
@@ -184,38 +211,55 @@ async function checkCloudProvider(
 
 /**
  * Check if the embedding model is configured and reachable.
- * Embeddings run through Ollama, so this verifies Ollama reachability
- * and that the embedding model is available.
+ * Uses a capability-based test: actually attempts to generate an embedding
+ * using the same OllamaEmbeddings configuration as the runtime pipeline.
+ *
+ * This is more accurate than checking the model list because:
+ * - The model may be listed but fail to generate embeddings
+ * - The model may generate embeddings successfully even if not in the list
+ *   (Ollama auto-pulls models on first use)
  */
 async function checkEmbeddingModel(): Promise<ComponentHealth> {
   const config = getConfig();
   const baseUrl = config.ollama.baseUrl;
+  const modelName = "nomic-embed-text";
 
   try {
+    // Attempt to generate an actual embedding — this is the real capability test.
+    // Uses the same endpoint and payload as the RagEmbeddings class at runtime.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2_000);
+    const timeout = setTimeout(() => controller.abort(), 10_000);
 
-    const response = await fetch(`${baseUrl}/api/tags`, {
+    const response = await fetch(`${baseUrl}/api/embeddings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: modelName,
+        prompt: "health check ping",
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
 
-    if (!response.ok) {
-      return { status: "unavailable", detail: "Ollama unreachable" };
+    if (response.ok) {
+      const data = (await response.json()) as { embedding?: number[] };
+      if (data.embedding && data.embedding.length > 0) {
+        return { status: "healthy" };
+      }
+      return { status: "degraded", detail: "Empty embedding returned" };
     }
 
-    // Verify the embedding model is present in the tag list.
-    const tags = (await response.json()) as { models?: Array<{ name: string }> };
-    const modelName = "nomic-embed-text";
-    const available = (tags.models ?? []).some((m) => m.name === modelName);
-
-    if (available) {
-      return { status: "healthy" };
+    // 404 → model not available (Ollama couldn't find or pull it)
+    if (response.status === 404) {
+      return {
+        status: "degraded",
+        detail: `Model "${modelName}" not available`,
+      };
     }
 
     return {
       status: "degraded",
-      detail: `Model "${modelName}" not pulled`,
+      detail: `Embedding request failed (${response.status})`,
     };
   } catch {
     return { status: "unavailable", detail: "Ollama unreachable" };
