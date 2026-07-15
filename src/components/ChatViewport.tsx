@@ -350,39 +350,80 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 md:px-6 py-6">
         <div className="max-w-3xl mx-auto w-full space-y-6">
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center text-center py-12 animate-fade-in">
-              <div className="w-20 h-20 rounded-2xl bg-red-600 flex items-center justify-center shadow-lg mb-8">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+              className="flex flex-col items-center justify-center text-center py-12"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.1, duration: 0.3 }}
+                className="w-20 h-20 rounded-2xl bg-red-600 flex items-center justify-center shadow-lg mb-8"
+              >
                 <BrainCircuit className="text-white w-10 h-10" />
-              </div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-3">Talker AI</h1>
-              <p className="text-base text-gray-600 max-w-lg mb-10">
+              </motion.div>
+              <motion.h1
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="text-3xl font-bold text-gray-900 mb-3"
+              >
+                Talker AI
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="text-base text-gray-600 max-w-lg mb-10"
+              >
                 Your intelligent AI workspace with memory, knowledge retrieval, and voice capabilities.
-              </p>
+              </motion.p>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-10 w-full max-w-2xl">
-                {CAPABILITIES.map((capability) => (
-                  <div key={capability.label} className="bg-white border border-gray-200 rounded-xl p-4 text-center hover:border-red-200 hover:shadow-md transition-all duration-200">
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
+                className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-10 w-full max-w-2xl"
+              >
+                {CAPABILITIES.map((capability, idx) => (
+                  <motion.div
+                    key={capability.label}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 + idx * 0.05 }}
+                    className="bg-white border border-gray-200 rounded-xl p-4 text-center card-premium"
+                  >
                     <capability.icon className="w-6 h-6 text-red-600 mx-auto mb-2" />
                     <div className="text-sm font-semibold text-gray-900 mb-0.5">{capability.label}</div>
                     <div className="text-xs text-gray-500">{capability.description}</div>
-                  </div>
+                  </motion.div>
                 ))}
-              </div>
+              </motion.div>
 
-              <div className="w-full max-w-2xl">
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.55 }}
+                className="w-full max-w-2xl"
+              >
                 <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-3">Suggested Actions</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {SUGGESTED_PROMPTS.map((prompt, idx) => (
-                    <button key={idx}
+                    <motion.button
+                      key={idx}
+                      whileHover={{ scale: 1.01, y: -1 }}
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => { onInputTextChange(prompt); onSendMessage(prompt); }}
-                      className="text-left px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 hover:border-red-300 hover:bg-red-50/50 transition-all duration-200"
+                      className="text-left px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 hover:border-red-300 hover:bg-red-50/50 transition-all duration-200 card-premium"
                     >
                       {prompt}
-                    </button>
+                    </motion.button>
                   ))}
                 </div>
-              </div>
-            </div>
+              </motion.div>
+            </motion.div>
           )}
 
           {messages.length > 0 && (() => {
@@ -395,9 +436,15 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 const separatorText = formatDateSeparator(msg.createdAt);
                 if (separatorText) {
                   elements.push(
-                    <div key={`sep-${msg.id || index}`} className="flex items-center justify-center py-4">
+                    <motion.div
+                      key={`sep-${msg.id || index}`}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25 }}
+                      className="flex items-center justify-center py-4"
+                    >
                       <div className="px-4 py-1.5 bg-white border border-gray-200 rounded-full text-xs text-gray-600 font-medium shadow-sm">{separatorText}</div>
-                    </div>
+                    </motion.div>
                   );
                 }
               }
@@ -419,7 +466,11 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
           })()}
 
           {loading && (
-            <div className="flex items-center gap-3 py-4">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-3 py-4"
+            >
               <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center flex-shrink-0">
                 <BrainCircuit className="w-4 h-4 text-white" />
               </div>
@@ -430,7 +481,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                   <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse" style={{ animationDuration: '1s', animationDelay: '0.4s' }} />
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {speechError && (
@@ -481,30 +532,34 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
           </AnimatePresence>
 
           <div className="flex items-center gap-2">
-            <button 
-              type="button" 
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={handlePaperclipClick}
-              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 border cursor-pointer flex-shrink-0 bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600 hover:scale-105 button-press"
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 border cursor-pointer flex-shrink-0 bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600 button-press"
               title="Attach document"
               aria-label="Attach document"
             >
               <Paperclip className="w-5 h-5" />
-            </button>
+            </motion.button>
             <input ref={fileInputRef} type="file" accept=".pdf,.txt,.md,.docx,.csv" onChange={handleFileSelect} className="hidden" aria-hidden="true" />
 
-            <button 
-              type="button" 
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={isListening ? onStopVoiceCapture : onStartVoiceCapture}
               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 border cursor-pointer flex-shrink-0 button-press ${
                 isListening 
                   ? "bg-red-600 text-white border-red-600 shadow-sm hover:bg-red-700" 
-                  : "bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600 hover:scale-105"
+                  : "bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600"
               }`}
               title={isListening ? "Stop listening" : "Start voice input"}
               aria-label={isListening ? "Stop listening" : "Start voice input"}
             >
               {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            </button>
+            </motion.button>
 
             <div className="flex-1 relative">
               <textarea 
@@ -513,7 +568,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 onKeyDown={handleKeyDown}
                 placeholder="Message Talker AI..." 
                 rows={1}
-                className="w-full bg-white border border-gray-300 focus:border-red-500 rounded-xl py-3 pl-4 pr-12 text-sm text-gray-900 focus:outline-none transition-all duration-200 resize-none placeholder-gray-500"
+                className="w-full bg-white border border-gray-300 focus:border-red-500 rounded-xl py-3 pl-4 pr-12 text-sm text-gray-900 focus:outline-none transition-all duration-200 resize-none placeholder-gray-500 input-premium"
                 disabled={loading}
                 onInput={(e) => { 
                   const t = e.currentTarget; 
@@ -527,19 +582,21 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 }}
                 aria-label="Message input"
               />
-              <button 
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
                 onClick={handleSend} 
                 disabled={loading || !inputText.trim()}
                 className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer button-press ${
                   inputText.trim() && !loading 
-                    ? "bg-red-600 text-white hover:bg-red-700 hover:scale-110 shadow-sm" 
+                    ? "bg-red-600 text-white hover:bg-red-700 shadow-sm" 
                     : "bg-gray-100 text-gray-400 cursor-not-allowed"
                 }`}
                 aria-label="Send message"
                 type="button"
               >
                 <ArrowRight className="w-4 h-4" />
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>

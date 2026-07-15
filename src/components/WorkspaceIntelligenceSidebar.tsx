@@ -315,23 +315,27 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={loadHealth}
             disabled={isRefreshing}
-            className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50"
+            className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 button-press"
             title="Refresh now"
           >
             <RefreshCw className={`h-3 w-3 ${isRefreshing ? "animate-spin" : ""}`} />
             Refresh
-          </button>
+          </motion.button>
           {onClose && (
-            <button
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
               onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition"
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition button-press"
               title="Close sidebar"
             >
               <X className="w-4 h-4" />
-            </button>
+            </motion.button>
           )}
         </div>
       </div>
@@ -339,14 +343,22 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
       {/* Body - Independently scrollable */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-5">
         {loading && !health ? (
-          <div className="flex items-center justify-center py-12 text-sm text-gray-400">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex items-center justify-center py-12 text-sm text-gray-400"
+          >
             <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
             Loading workspace status…
-          </div>
+          </motion.div>
         ) : error && !health ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-4 text-center text-[12px] text-red-600">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl border border-red-200 bg-red-50 px-3 py-4 text-center text-[12px] text-red-600"
+          >
             {error}
-          </div>
+          </motion.div>
         ) : health ? (
           <>
             {/* Section 1: AI Monitor */}
@@ -356,7 +368,11 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
                 title="AI Monitor"
                 subtitle="Request-scoped telemetry"
               />
-              <div className="rounded-xl border border-gray-200/70 bg-white p-3 shadow-sm space-y-1">
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-xl border border-gray-200/70 bg-white p-3 shadow-sm space-y-1"
+              >
                 <MetricRow label="Provider" value={aiMonitorData?.provider ?? "—"} />
                 <MetricRow label="Model" value={aiMonitorData?.model ?? "—"} />
                 <MetricRow 
@@ -421,7 +437,11 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
                     />
                   </div>
                 ) : (
-                  <div className="border-t border-gray-100 pt-2 mt-1.5">
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="border-t border-gray-100 pt-2 mt-1.5"
+                  >
                     <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2">
                       <Wrench className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
                       <div className="min-w-0">
@@ -429,9 +449,9 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
                         <p className="text-[10px] text-gray-400">Tool activity will appear here.</p>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 )}
-              </div>
+              </motion.div>
             </section>
 
             {/* Section 2: System Health */}

@@ -224,16 +224,20 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
       {/* Header - Fixed */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <BookOpen className="w-5 h-5 text-red-600" />
+          <div className="w-8 h-8 rounded-lg bg-gray-900 text-white flex items-center justify-center">
+            <BookOpen className="w-4 h-4" />
+          </div>
           <h2 className="font-semibold text-gray-900">Knowledge Center</h2>
         </div>
-        <button
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
           onClick={() => onClose?.()}
-          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
           title="Collapse Knowledge Center"
         >
           <ChevronDown className="w-4 h-4" />
-        </button>
+        </motion.button>
       </div>
 
       {/* Error Banner */}
@@ -262,10 +266,11 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
       <div className="flex-1 min-h-0 overflow-y-auto">
         {/* Upload Area */}
         <div className="p-4 border-b border-gray-200">
-          <label
+          <motion.label
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            whileHover={{ scale: 1.01 }}
             className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200 flex flex-col items-center gap-3 ${
               dragOver 
                 ? "border-red-400 bg-red-50" 
@@ -290,10 +295,14 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
                 PDF, TXT, MD, DOCX, CSV up to 10MB
               </p>
             </div>
-          </label>
+          </motion.label>
 
           {isUploading && (
-            <div className="mt-3">
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-3"
+            >
               <div className="flex items-center gap-2 text-xs text-gray-600 mb-1">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 <span>{indexingStatus}</span>
@@ -304,14 +313,17 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
-            </div>
+            </motion.div>
           )}
         </div>
 
         {/* Statistics */}
         <div className="p-4 border-b border-gray-200">
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gray-50 rounded-xl p-3">
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              className="bg-gray-50 rounded-xl p-3 card-premium"
+            >
               <div className="flex items-center gap-2 mb-1">
                 <FileText className="w-4 h-4 text-gray-600" />
                 <span className="text-xs text-gray-600">Documents</span>
@@ -325,8 +337,11 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
                   <span className="text-gray-400">Unavailable</span>
                 )}
               </span>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-3">
+            </motion.div>
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              className="bg-gray-50 rounded-xl p-3 card-premium"
+            >
               <div className="flex items-center gap-2 mb-1">
                 <Database className="w-4 h-4 text-gray-600" />
                 <span className="text-xs text-gray-600">Chunks</span>
@@ -340,7 +355,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
                   <span className="text-gray-400">Unavailable</span>
                 )}
               </span>
-            </div>
+            </motion.div>
           </div>
           
           <div className="mt-3 flex items-center justify-between text-xs">
@@ -369,7 +384,11 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
         {/* Current Document Card */}
         {activeDocument && (
           <div className="p-4 border-b border-gray-200">
-            <div className="bg-gradient-to-r from-red-50 to-white border border-red-200 rounded-xl p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-gradient-to-r from-red-50 to-white border border-red-200 rounded-xl p-4"
+            >
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles className="w-5 h-5 text-red-600" />
                 <span className="font-semibold text-gray-900">Current Document</span>
@@ -379,30 +398,36 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
                 {activeDocument.chunkCount ? ` (${activeDocument.chunkCount} chunks)` : ''}
               </p>
               <div className="flex gap-2">
-                <button 
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     setSelectedDocument(activeDocument);
                     setShowInsights(true);
                   }}
-                  className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition"
+                  className="flex-1 bg-red-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition btn-premium"
                 >
                   Summarize Document
-                </button>
-                <button 
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => reindexDocument(activeDocument.documentId)}
-                  className="flex-1 bg-white border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
+                  className="flex-1 bg-white border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition btn-premium"
                 >
                   Re-index
-                </button>
-                <button 
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
                   onClick={() => handleDeleteDocument(activeDocument.documentId)}
-                  className="p-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition"
+                  className="p-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition button-press"
                   title="Delete document"
                 >
                   <Trash2 className="w-4 h-4" />
-                </button>
+                </motion.button>
               </div>
-            </div>
+            </motion.div>
           </div>
         )}
 
@@ -413,18 +438,26 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
           </h3>
           
           {documents.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">
-                No documents uploaded yet
-              </p>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center py-8"
+            >
+              <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                <FileText className="w-6 h-6 text-gray-400" />
+              </div>
+              <p className="text-sm text-gray-500 mb-1">No documents uploaded yet</p>
+              <p className="text-xs text-gray-400">Upload a document to enable retrieval.</p>
+            </motion.div>
           ) : (
             <div className="space-y-2">
-              {documents.map((doc) => (
-                <div
+              {documents.map((doc, idx) => (
+                <motion.div
                   key={doc.documentId}
-                  className={`bg-white border rounded-xl p-3 hover:shadow-sm transition ${
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.03 }}
+                  className={`bg-white border rounded-xl p-3 card-premium ${
                     doc.isActive ? 'border-red-300 bg-red-50/30' : 'border-gray-200'
                   }`}
                 >
@@ -462,26 +495,30 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
                       }`}>
                         {doc.status}
                       </span>
-                      <button
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
                         onClick={() => {
                           setSelectedDocument(doc);
                           setShowPreview(true);
                         }}
-                        className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
+                        className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition button-press"
                         title="Preview document"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                      </button>
-                      <button
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
                         onClick={() => handleDeleteDocument(doc.documentId)}
-                        className="p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition"
+                        className="p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition button-press"
                         title="Delete document"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      </motion.button>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           )}
