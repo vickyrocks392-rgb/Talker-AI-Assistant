@@ -1,4 +1,4 @@
-name: Talker AI CI
+name: Noryx CI
 
 on:
   push:

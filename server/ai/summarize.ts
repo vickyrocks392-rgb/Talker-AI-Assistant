@@ -26,7 +26,7 @@ export async function summarizeConversation(
   try {
     // Convert to Ollama message format
     const conversationText = messages
-      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+      .map((m) => `${m.role === "user" ? "User" : "Noryx"}: ${m.text}`)
       .join("\n");
 
     const prompt = `Create a very short, single one-sentence summary (under 5 words) of this conversation to serve as a chat session title. Respond ONLY with JSON.

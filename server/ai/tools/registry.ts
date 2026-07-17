@@ -1,5 +1,5 @@
 /**
- * Singleton tool registry for the Talker AI Tool Engine.
+ * Singleton tool registry for the Noryx AI Tool Engine.
  *
  * The registry is the single source of truth for all available tools.
  * Tools are registered once at startup and can be looked up by name

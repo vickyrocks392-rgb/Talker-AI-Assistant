@@ -1,5 +1,5 @@
 /**
- * Backend-specific TypeScript interfaces for the Talker AI server.
+ * Backend-specific TypeScript interfaces for the Noryx AI server.
  *
  * Shared domain and API contract types (Persona, ConversationMessage,
  * MapAction, ChatRequest/Response, SummaryRequest/Response) live in

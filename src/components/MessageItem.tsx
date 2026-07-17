@@ -128,7 +128,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
           </div>
 
           <div className="flex items-center gap-2 mt-1.5 ml-1 select-none text-[11px] text-gray-500">
-            <span>Assistant</span>
+            <span>Noryx</span>
             {msg.createdAt && (
               <>
                 <span>•</span>

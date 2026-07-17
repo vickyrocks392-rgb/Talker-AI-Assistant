@@ -199,7 +199,7 @@ export const useChatManager = ({
   // ── Send a message ───────────────────────────────────────────────
 
   const sendMessageToBot = useCallback(
-    async (textToSend: string, attachments?: ChatAttachment[]) => {
+    async (textToSend: string, attachments?: ChatAttachment[], isVoice: boolean = false) => {
       const trimmed = textToSend.trim();
       if (!trimmed) return;
 
@@ -243,16 +243,15 @@ export const useChatManager = ({
             persona,
             stream: true,
             attachments: attachments ?? [],
+            isVoice,
           },
           // onToken — we don't update UI per-token since we reload from backend
           () => {},
         );
 
         // Capture AI Monitor data from the response
-        console.log("[AI Monitor DEBUG] useChatManager result.aiMonitor:", result.aiMonitor);
         if (result.aiMonitor) {
           setAiMonitorData(result.aiMonitor);
-          console.log("[AI Monitor DEBUG] useChatManager setAiMonitorData called");
           
           // Dispatch events for sidebar auto-expand based on AI monitor data
           if (result.aiMonitor.memory && result.aiMonitor.memory.entryCount > 0) {
@@ -269,18 +268,10 @@ export const useChatManager = ({
             const toolEvent = new CustomEvent('tool-executed');
             window.dispatchEvent(toolEvent);
           }
-        } else {
-          console.log("[AI Monitor DEBUG] useChatManager result.aiMonitor is undefined");
         }
 
         // After response, refresh from backend (source of truth)
-        console.log(`[TitleGenerator] About to refresh conversation list`);
         await refreshActiveConversation();
-        console.log(`[TitleGenerator] Conversation list refreshed. Current conversations:`, conversations.map(c => ({ id: c.id, title: c.title, titleGenerated: c.titleGenerated })));
-        
-        // Re-fetch conversations directly to log the full list
-        const freshList = await (await fetch("/api/conversations")).json();
-        console.log(`[TitleGenerator] Frontend received conversation list:`, JSON.stringify(freshList.map((c: any) => ({ id: c.id, title: c.title, titleGenerated: c.titleGenerated })), null, 2));
 
         setLoading(false);
 

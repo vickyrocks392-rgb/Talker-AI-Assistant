@@ -1,5 +1,5 @@
 /**
- * Calculator tool for the Talker AI Tool Engine.
+ * Calculator tool for the Noryx AI Tool Engine.
  *
  * Performs basic arithmetic: addition, subtraction, multiplication,
  * and division.  Returns a structured result with the expression

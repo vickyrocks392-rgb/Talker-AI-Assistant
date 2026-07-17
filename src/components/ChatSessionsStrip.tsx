@@ -66,7 +66,7 @@ export const ChatSessionsStrip: React.FC<ChatSessionsStripProps> = ({
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search conversations..."
+          placeholder="Search your Noryx conversations..."
           className="w-full pl-9 pr-8 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:outline-none focus:border-red-500 focus:bg-white input-premium"
         />
         {searchQuery && (
@@ -93,8 +93,8 @@ export const ChatSessionsStrip: React.FC<ChatSessionsStripProps> = ({
               <Sparkles className="w-4 h-4 text-red-600" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">Welcome to Talker AI</h3>
-              <p className="text-[11px] text-gray-500">Your intelligent workspace</p>
+              <h3 className="text-sm font-semibold text-gray-900">Welcome to Noryx</h3>
+              <p className="text-[11px] text-gray-500">Your private AI workspace</p>
             </div>
           </div>
           <p className="text-xs text-gray-600 mb-3 leading-relaxed">

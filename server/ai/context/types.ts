@@ -60,6 +60,15 @@ export interface ContextBuilderOptions {
    * sources specified in the plan, skipping unnecessary work.
    */
   executionPlan?: ExecutionPlan;
+
+  /**
+   * True when the current user message originated from voice input
+   * (speech recognition). When set, a temporary system message is injected
+   * immediately before the user message for THIS request only. It is never
+   * persisted to memory or conversation history and does not affect future
+   * messages.
+   */
+  isVoice?: boolean;
 }
 
 // ── Output from the Context Builder ─────────────────────────────────

@@ -1,5 +1,5 @@
 -- 001_initial_schema.sql
--- Initial schema for Talker AI
+-- Initial schema for Noryx
 -- Creates conversations and messages tables
 
 CREATE TABLE IF NOT EXISTS conversations (

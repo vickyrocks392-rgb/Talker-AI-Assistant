@@ -33,7 +33,7 @@ This phase transformed the project into a production-ready engineering foundatio
 - `npm run build` produces valid production bundle.
 - No changes to API contracts, streaming, or frontend behavior.
 
-## [1.0.0] — Talker AI v3: OpenStreetMap + Leaflet Production Refactor
+## [1.0.0] — Noryx v3: OpenStreetMap + Leaflet Production Refactor
 
 ...
 

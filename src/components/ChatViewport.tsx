@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Mic, MicOff, ArrowRight, BrainCircuit, Sparkles, MessageSquare, Code, BookOpen, Paperclip, Upload, AlertCircle } from "lucide-react";
+import { Mic, MicOff, ArrowRight, Sparkles, MessageSquare, Code, BookOpen, Paperclip, Upload, AlertCircle } from "lucide-react";
 import type { Message } from "../types";
 import type { ChatAttachment, AIMonitorDTO } from "../lib/api";
 import { MessageItem } from "./MessageItem";
@@ -9,6 +9,7 @@ import { useDocumentManager } from "../hooks/useDocumentManager";
 import { AttachmentChip, type Attachment, type AttachmentStatus } from "./AttachmentChip";
 import { DocumentPreviewDrawer } from "./DocumentPreviewDrawer";
 import { AIMonitorPanel } from "./AIMonitorPanel";
+import { Logo } from "./Logo";
 
 const getMessageDate = (createdAt: any): Date | null => {
   if (!createdAt) return null;
@@ -50,25 +51,41 @@ interface ChatViewportProps {
   onCopy: (text: string, id: string) => void;
   devScrollRef: React.RefObject<HTMLDivElement | null>;
   aiMonitorData?: AIMonitorDTO | null;
+  onOpenKnowledgeCenter?: () => void;
 }
 
 const CAPABILITIES = [
-  { icon: BrainCircuit, label: "Memory", description: "Remembers context across conversations" },
-  { icon: BookOpen, label: "Knowledge", description: "Learns from your documents" },
-  { icon: Code, label: "Code", description: "Writes & explains code" },
-  { icon: MessageSquare, label: "Voice", description: "Natural conversation" },
-  { icon: Sparkles, label: "Reasoning", description: "Solves complex problems" },
+  { 
+    icon: Sparkles, 
+    label: "Memory", 
+    description: "Remembers context across conversations",
+    action: "What do you remember about my previous conversations?"
+  },
+  { 
+    icon: BookOpen, 
+    label: "Knowledge", 
+    description: "Learns from your documents",
+    action: "knowledge"
+  },
+  { 
+    icon: MessageSquare, 
+    label: "Voice", 
+    description: "Natural conversation",
+    action: "voice"
+  },
+  { 
+    icon: Code, 
+    label: "Reasoning", 
+    description: "Solves complex problems",
+    action: "Help me solve a complex problem step by step."
+  },
 ];
 
 const SUGGESTED_PROMPTS = [
   "Explain this PDF",
   "Summarize my resume",
-  "Help write Python",
-  "Debug TypeScript",
-  "Explain machine learning",
-  "Calculate compound interest",
-  "Write a React component",
-  "Analyze this data",
+  "Help me write Python code.",
+  "Help me debug this TypeScript issue.",
 ];
 
 export const ChatViewport: React.FC<ChatViewportProps> = ({
@@ -89,13 +106,15 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
   onSpeak,
   onCopy,
   devScrollRef,
-  aiMonitorData
+  aiMonitorData,
+  onOpenKnowledgeCenter
 }) => {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
   const [previewDocumentId, setPreviewDocumentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevMessagesLengthRef = useRef(messages.length);
   
   // Store attachments per message ID to preserve them across backend refreshes
@@ -201,7 +220,6 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
     try {
       await uploadDocument(file);
       // Dispatch event for sidebar auto-expand
-      console.log('[AutoExpand] document-uploaded event dispatched');
       const event = new CustomEvent('document-uploaded');
       window.dispatchEvent(event);
     } catch (error: any) {
@@ -283,7 +301,6 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
       try {
         await uploadDocument(fileObj);
         // Dispatch event for sidebar auto-expand
-        console.log('[AutoExpand] document-uploaded event dispatched');
         const event = new CustomEvent('document-uploaded');
         window.dispatchEvent(event);
       } catch (error: any) {
@@ -320,6 +337,35 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
       handleSend();
     }
   }, [handleSend]);
+
+  // ── Focus textarea and move cursor to end ──────────────────────────
+  const focusTextarea = useCallback(() => {
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+      // Move cursor to end
+      const length = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(length, length);
+    }
+  }, []);
+
+  // ── Handle capability card click ──────────────────────────────────
+  const handleCapabilityClick = useCallback((capability: typeof CAPABILITIES[0]) => {
+    if (capability.action === "knowledge") {
+      onOpenKnowledgeCenter?.();
+    } else if (capability.action === "voice") {
+      if (isListening) {
+        onStopVoiceCapture();
+      } else {
+        onStartVoiceCapture();
+      }
+    } else if (capability.action) {
+      onInputTextChange(capability.action);
+      // Focus textarea after state update
+      setTimeout(() => {
+        focusTextarea();
+      }, 0);
+    }
+  }, [onOpenKnowledgeCenter, onStartVoiceCapture, onStopVoiceCapture, isListening, onInputTextChange, focusTextarea]);
 
   return (
     <div 
@@ -360,9 +406,9 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: 0.1, duration: 0.3 }}
-                className="w-20 h-20 rounded-2xl bg-red-600 flex items-center justify-center shadow-lg mb-8"
+                className="mb-6"
               >
-                <BrainCircuit className="text-white w-10 h-10" />
+                <Logo size="lg" showText={false} />
               </motion.div>
               <motion.h1
                 initial={{ opacity: 0, y: 8 }}
@@ -370,7 +416,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 transition={{ delay: 0.15 }}
                 className="text-3xl font-bold text-gray-900 mb-3"
               >
-                Talker AI
+                Welcome to Noryx
               </motion.h1>
               <motion.p
                 initial={{ opacity: 0, y: 8 }}
@@ -378,7 +424,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 transition={{ delay: 0.2 }}
                 className="text-base text-gray-600 max-w-lg mb-10"
               >
-                Your intelligent AI workspace with memory, knowledge retrieval, and voice capabilities.
+                Private AI workspace with memory, retrieval and intelligent tooling.
               </motion.p>
 
               <motion.div
@@ -388,17 +434,21 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-10 w-full max-w-2xl"
               >
                 {CAPABILITIES.map((capability, idx) => (
-                  <motion.div
+                  <motion.button
                     key={capability.label}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 + idx * 0.05 }}
-                    className="bg-white border border-gray-200 rounded-xl p-4 text-center card-premium"
+                    whileHover={{ scale: 1.02, y: -2 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => handleCapabilityClick(capability)}
+                    className="bg-white border border-gray-200 rounded-xl p-4 text-center cursor-pointer transition-all duration-150 hover:border-red-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                    type="button"
                   >
                     <capability.icon className="w-6 h-6 text-red-600 mx-auto mb-2" />
                     <div className="text-sm font-semibold text-gray-900 mb-0.5">{capability.label}</div>
                     <div className="text-xs text-gray-500">{capability.description}</div>
-                  </motion.div>
+                  </motion.button>
                 ))}
               </motion.div>
 
@@ -413,10 +463,14 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                   {SUGGESTED_PROMPTS.map((prompt, idx) => (
                     <motion.button
                       key={idx}
-                      whileHover={{ scale: 1.01, y: -1 }}
+                      whileHover={{ scale: 1.02, y: -1 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => { onInputTextChange(prompt); onSendMessage(prompt); }}
-                      className="text-left px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 hover:border-red-300 hover:bg-red-50/50 transition-all duration-200 card-premium"
+                      onClick={() => { 
+                        onInputTextChange(prompt); 
+                        setTimeout(() => focusTextarea(), 0);
+                      }}
+                      className="text-left px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 hover:border-red-300 hover:bg-red-50/50 transition-all duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                      type="button"
                     >
                       {prompt}
                     </motion.button>
@@ -472,7 +526,9 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
               className="flex items-center gap-3 py-4"
             >
               <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center flex-shrink-0">
-                <BrainCircuit className="w-4 h-4 text-white" />
+                <svg width="16" height="16" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M6 26V6L16 20L26 6V26" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-1">
@@ -497,9 +553,6 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
 
       {/* AI Monitor Panel — attached above input */}
       <AIMonitorPanel data={aiMonitorData ?? null} />
-
-      {/* ── DEBUG: Log aiMonitorData received by ChatViewport ─────────── */}
-      {(() => { console.log("[AI Monitor DEBUG] ChatViewport aiMonitorData:", aiMonitorData); return null; })()}
 
       {/* Message input - Fixed at bottom */}
       <div className="border-t border-gray-200 bg-white px-4 md:px-6 py-4 flex-shrink-0">
@@ -563,10 +616,11 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
 
             <div className="flex-1 relative">
               <textarea 
+                ref={textareaRef}
                 value={inputText} 
                 onChange={(e) => onInputTextChange(e.target.value)} 
                 onKeyDown={handleKeyDown}
-                placeholder="Message Talker AI..." 
+                placeholder="Message Noryx..." 
                 rows={1}
                 className="w-full bg-white border border-gray-300 focus:border-red-500 rounded-xl py-3 pl-4 pr-12 text-sm text-gray-900 focus:outline-none transition-all duration-200 resize-none placeholder-gray-500 input-premium"
                 disabled={loading}

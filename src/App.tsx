@@ -4,13 +4,10 @@ import {
   Settings as SettingsIcon,
   Menu,
   X,
-  BrainCircuit,
   Plus,
   BookOpen,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-// @ts-nocheck
-
 // Import custom React hooks
 import { useAuthAndProfile } from "./hooks/useAuthAndProfile";
 import { useChatManager } from "./hooks/useChatManager";
@@ -23,6 +20,7 @@ import { ChatViewport } from "./components/ChatViewport";
 import { LockScreen } from "./components/LockScreen";
 import { KnowledgeCenter } from "./components/KnowledgeCenter";
 import { WorkspaceIntelligenceSidebar } from "./components/WorkspaceIntelligenceSidebar";
+import { Logo } from "./components/Logo";
 
 export default function App() {
   // 1. Browser Network State
@@ -83,18 +81,18 @@ export default function App() {
     speakTextOutLoud,
     stopActiveSpeech,
   } = useVoiceAssistant({
-    onSpeechResult: (text) => sendMessageToBot(text),
+    onSpeechResult: (text) => sendMessageToBot(text, undefined, true),
     isOnline,
   });
 
   // 3a. Global voice preference: auto-read AI replies (default OFF)
   const [autoReadReplies, setAutoReadReplies] = useState<boolean>(() => {
-    const stored = localStorage.getItem("talker_auto_read_replies");
+    const stored = localStorage.getItem("noryx_auto_read_replies");
     return stored === "true";
   });
 
   useEffect(() => {
-    localStorage.setItem("talker_auto_read_replies", String(autoReadReplies));
+    localStorage.setItem("noryx_auto_read_replies", String(autoReadReplies));
   }, [autoReadReplies]);
 
   // 4. Chat session list, syncing, and messages pipelines hook
@@ -121,9 +119,6 @@ export default function App() {
       }
     },
   });
-
-  // ── DEBUG: Log aiMonitorData from hook ─────────────────────────────
-  console.log("[AI Monitor DEBUG] App.tsx aiMonitorData:", aiMonitorData);
 
   // Layout presentation controls
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
@@ -232,24 +227,24 @@ export default function App() {
   useEffect(() => {
     const toStore = Array.from(autoExpandTrackerRef.current);
     localStorage.setItem("workspace_intelligence_autoexpand_tracker", JSON.stringify(toStore));
-  }, [autoExpandTrackerRef.current]);
+  }, []);
 
   // First-run experience / onboarding state
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
-    const dismissed = localStorage.getItem("talker_onboarding_dismissed");
+    const dismissed = localStorage.getItem("noryx_onboarding_dismissed");
     return dismissed !== "true";
   });
 
   const dismissOnboarding = useCallback(() => {
     setShowOnboarding(false);
-    localStorage.setItem("talker_onboarding_dismissed", "true");
+    localStorage.setItem("noryx_onboarding_dismissed", "true");
   }, []);
 
   // Auto-dismiss onboarding when first conversation is created
   useEffect(() => {
     if (conversations.length > 0 && showOnboarding) {
       setShowOnboarding(false);
-      localStorage.setItem("talker_onboarding_dismissed", "true");
+      localStorage.setItem("noryx_onboarding_dismissed", "true");
     }
   }, [conversations.length, showOnboarding]);
 
@@ -262,14 +257,11 @@ export default function App() {
 
   // Persist workspace intelligence sidebar state
   useEffect(() => {
-    console.log(`[AutoExpand] workspaceIntelligenceOpen state changed to: ${workspaceIntelligenceOpen}`);
     localStorage.setItem("workspace_intelligence_open", String(workspaceIntelligenceOpen));
   }, [workspaceIntelligenceOpen]);
 
   // Intelligent auto-expansion for important events
   const triggerAutoExpand = useCallback((eventCategory: string) => {
-    console.log(`[AutoExpand] triggerAutoExpand(${eventCategory})`);
-    
     const STORAGE_KEYS: Record<string, string> = {
       'document_upload': 'workspace_intelligence_autoexpand_documents',
       'memory_retrieval': 'workspace_intelligence_autoexpand_memory',
@@ -279,10 +271,7 @@ export default function App() {
     };
     
     const storageKey = STORAGE_KEYS[eventCategory];
-    if (!storageKey) {
-      console.log(`[AutoExpand] No storage key for ${eventCategory}, returning`);
-      return;
-    }
+    if (!storageKey) return;
     
     // Check localStorage for cooldown timestamp
     const lastTriggered = localStorage.getItem(storageKey);
@@ -292,48 +281,26 @@ export default function App() {
       const cooldownMs = 5 * 60 * 1000; // 5 minutes
       const timeSinceTrigger = now - parseInt(lastTriggered, 10);
       
-      console.log(`[AutoExpand] cooldown check:`, {
-        lastExpand: lastTriggered ? new Date(parseInt(lastTriggered, 10)).toISOString() : 'never',
-        now: new Date(now).toISOString(),
-        timeSinceTrigger: `${(timeSinceTrigger / 1000).toFixed(1)}s`,
-        cooldown: `${(cooldownMs / 1000).toFixed(1)}s`,
-        allowed: timeSinceTrigger >= cooldownMs
-      });
-      
       // If within cooldown period, don't trigger
-      if (timeSinceTrigger < cooldownMs) {
-        console.log(`[AutoExpand] Cooldown active for ${eventCategory}, skipping`);
-        return;
-      }
-    } else {
-      console.log(`[AutoExpand] No previous trigger found for ${eventCategory}`);
+      if (timeSinceTrigger < cooldownMs) return;
     }
-    
-    console.log(`[AutoExpand] Opening workspace sidebar`);
     
     // Store timestamp in localStorage
     localStorage.setItem(storageKey, String(now));
     
     // Auto-expand the sidebar
-    console.log(`[AutoExpand] Calling setWorkspaceIntelligenceOpen(true)`);
     setWorkspaceIntelligenceOpen(true);
-    console.log(`[AutoExpand] workspaceIntelligenceOpen=true called`);
   }, []);
 
   // Listen for document uploads
   useEffect(() => {
-    console.log('[AutoExpand] Registering document-uploaded event listener');
-    
     const handleDocumentUpload = () => {
-      console.log('[AutoExpand] document-uploaded event received');
       triggerAutoExpand('document_upload');
     };
     
     window.addEventListener('document-uploaded', handleDocumentUpload);
-    console.log('[AutoExpand] document-uploaded listener mounted');
     
     return () => {
-      console.log('[AutoExpand] Removing document-uploaded event listener');
       window.removeEventListener('document-uploaded', handleDocumentUpload);
     };
   }, [triggerAutoExpand]);
@@ -441,30 +408,10 @@ export default function App() {
               className="fixed top-0 bottom-0 left-0 w-[300px] bg-white border-r border-gray-200 z-50 lg:static lg:h-full lg:w-[320px] lg:flex-shrink-0 shadow-xl flex flex-col"
             >
               {/* Sidebar Header - Fixed */}
-              <div className="flex flex-col gap-4 p-5">
-                {/* Logo and Product Name - Improved branding */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center shadow-sm">
-                      <BrainCircuit className="text-white w-6 h-6" />
-                    </div>
-                    <div>
-                      <h1 className="text-lg font-bold tracking-tight text-gray-900">
-                        Talker AI
-                      </h1>
-                      <span className="text-xs text-gray-500 font-medium tracking-wide block leading-tight">
-                        Intelligent AI Workspace
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Drawer toggle for mobile */}
-                  <button
-                    onClick={() => setSidebarOpen(false)}
-                    className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 lg:hidden cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+              <div className="flex flex-col gap-5 p-6">
+                {/* Brand Block - Anchor of the application */}
+                <div className="flex flex-col items-center text-center gap-3">
+                  <Logo size="lg" showText={true} variant="light" />
                 </div>
 
                 {/* New Chat Button */}
@@ -565,10 +512,10 @@ export default function App() {
               <Menu className="w-5 h-5" />
             </button>
 
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2 leading-none">
-                {activeConversationId ? "Conversation" : "Talker AI"}
-              </h2>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2 leading-none">
+                  {activeConversationId ? "Conversation" : "Noryx"}
+                </h2>
               {activeConversationId && (
                 <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
                   <span className="flex items-center gap-1">
@@ -630,9 +577,10 @@ export default function App() {
             copiedId={copiedId}
             onSpeak={speakTextOutLoud}
             onCopy={copyToClipboard}
-            devScrollRef={devScrollRef}
-            aiMonitorData={aiMonitorData}
-          />
+              devScrollRef={devScrollRef}
+              aiMonitorData={aiMonitorData}
+              onOpenKnowledgeCenter={() => setKnowledgeOpen(true)}
+           />
         </main>
 
         {/* Global overlay settings modal */}
@@ -744,28 +692,30 @@ export default function App() {
 
       {/* Right Edge Toggle Button - Always visible, draggable */}
       {!workspaceIntelligenceOpen && (
-        <motion.button
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={handleButtonClick}
-          onMouseDown={handleButtonMouseDown}
-          style={{ 
-            position: 'fixed',
-            right: 0,
-            top: `${buttonY}px`,
-            transform: 'translateY(-50%)',
-            zIndex: 30,
-          }}
-          className="bg-gray-900 hover:bg-gray-800 text-white px-3 py-4 rounded-l-xl shadow-lg flex items-center gap-2 transition-colors cursor-move"
-          title="Drag to reposition • Click to open"
-        >
-          <BrainCircuit className="w-5 h-5" />
-          <span className="text-xs font-semibold whitespace-nowrap hidden sm:inline">
-            AI Workspace
-          </span>
-        </motion.button>
+          <motion.button
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleButtonClick}
+            onMouseDown={handleButtonMouseDown}
+            style={{ 
+              position: 'fixed',
+              right: 0,
+              top: `${buttonY}px`,
+              transform: 'translateY(-50%)',
+              zIndex: 30,
+            }}
+            className="bg-gray-900 hover:bg-gray-800 text-white px-3 py-4 rounded-l-xl shadow-lg flex items-center gap-2 transition-colors cursor-move"
+            title="Drag to reposition • Click to open"
+          >
+            <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
+              <path d="M6 26V6L16 20L26 6V26" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="text-xs font-semibold whitespace-nowrap hidden sm:inline">
+              Noryx
+            </span>
+          </motion.button>
       )}
     </div>
   );

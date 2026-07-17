@@ -169,6 +169,30 @@ export class ContextBuilder {
       });
     }
 
+    // ── Voice input system message (temporary, request-scoped) ─────
+    // Injected immediately before the user message ONLY when the current
+    // request originated from voice input. This message is never persisted
+    // to memory or conversation history and does not affect future messages.
+    if (options.isVoice) {
+      sections.push({
+        label: "voice_input_hint",
+        priority: ContextPriority.Critical,
+        content:
+          "IMPORTANT CONTEXT:\n\n" +
+          "The following user message was submitted through Noryx's voice interface.\n\n" +
+          "The user's speech has already been successfully transcribed into text and delivered to you.\n\n" +
+          "If the user asks questions such as:\n" +
+          "- Can you hear me?\n" +
+          "- Is my microphone working?\n" +
+          "- Did you receive my voice?\n\n" +
+          "interpret them as questions about the success of the speech recognition pipeline rather than direct audio perception.\n\n" +
+          "Confirm successful transcription when appropriate.\n\n" +
+          "Do not claim direct audio perception or continuous listening.\n\n" +
+          "Keep this instruction temporary and request-scoped only.",
+        role: "system",
+      });
+    }
+
     // Current user message (Critical priority)
     sections.push({
       label: "current_user_message",
@@ -208,7 +232,8 @@ export class ContextBuilder {
       `rag=${metadata.hasRagContext}, ` +
       `tool=${metadata.hasToolResult}, ` +
       `history=${metadata.historyMessageCount}` +
-      (executionPlan ? `, plan=${executionPlan.mode}` : ""),
+      (executionPlan ? `, plan=${executionPlan.mode}` : "") +
+      (options.isVoice ? ", voice=true" : ""),
     );
 
     return { messages, metadata };
@@ -356,6 +381,30 @@ export class ContextBuilder {
       });
     }
 
+    // ── Voice input system message (temporary, request-scoped) ─────
+    // Injected immediately before the user message ONLY when the current
+    // request originated from voice input. This message is never persisted
+    // to memory or conversation history and does not affect future messages.
+    if (options.isVoice) {
+      sections.push({
+        label: "voice_input_hint",
+        priority: ContextPriority.Critical,
+        content:
+          "IMPORTANT CONTEXT:\n\n" +
+          "The following user message was submitted through Noryx's voice interface.\n\n" +
+          "The user's speech has already been successfully transcribed into text and delivered to you.\n\n" +
+          "If the user asks questions such as:\n" +
+          "- Can you hear me?\n" +
+          "- Is my microphone working?\n" +
+          "- Did you receive my voice?\n\n" +
+          "interpret them as questions about the success of the speech recognition pipeline rather than direct audio perception.\n\n" +
+          "Confirm successful transcription when appropriate.\n\n" +
+          "Do not claim direct audio perception or continuous listening.\n\n" +
+          "Keep this instruction temporary and request-scoped only.",
+        role: "system",
+      });
+    }
+
     // Current user message (Critical priority)
     sections.push({
       label: "current_user_message",
@@ -409,7 +458,8 @@ export class ContextBuilder {
       `memory=${metadata.hasMemoryContext}, ` +
       `rag=${metadata.hasRagContext} (${metadata.ragChunkCount} chunks), ` +
       `attachments=[${attachmentNames}]` +
-      (executionPlan ? `, plan=${executionPlan.mode}` : ""),
+      (executionPlan ? `, plan=${executionPlan.mode}` : "") +
+      (options.isVoice ? ", voice=true" : ""),
     );
 
     return { messages, metadata };

@@ -138,7 +138,7 @@ async function generateTitleWithAI(
   const prompt = `Generate a very short, descriptive title (2-5 words) for this conversation. The title should be professional, concise, and capture the main topic.
 
 User message: "${userText}"
-${assistantText ? `Assistant response: "${assistantText.substring(0, 500)}"` : ""}
+  ${assistantText ? `Noryx response: "${assistantText.substring(0, 500)}"` : ""}
 
 Return a JSON object with the title. Example: {"title": "Resume Summary"}
 

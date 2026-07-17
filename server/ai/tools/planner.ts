@@ -1,5 +1,5 @@
 /**
- * Deterministic planner for the Talker AI Tool Engine.
+ * Deterministic planner for the Noryx AI Tool Engine.
  *
  * The planner analyses a user's raw text input and decides which tool
  * to invoke (if any).  It uses simple pattern matching — **not** an LLM —

@@ -1,5 +1,5 @@
 /**
- * Tool executor for the Talker AI Tool Engine.
+ * Tool executor for the Noryx AI Tool Engine.
  *
  * The executor receives a {@link ToolRequest} from the planner, looks up
  * the tool in the registry, and calls `tool.execute(args)`.  It returns

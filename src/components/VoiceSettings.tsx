@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
 import { 
-  ArrowLeft, Settings, User, Sliders, Volume2, VolumeX, Cloud, LogIn, Wifi, Sparkles, BrainCircuit, HeartCrack,
+  ArrowLeft, Settings, User, Sliders, Volume2, VolumeX, Cloud, LogIn, Wifi, Sparkles, HeartCrack,
   Lock, Shield, Mic, Key, Check, AlertCircle, Eye, EyeOff, RefreshCw
 } from "lucide-react";
 import { VOICE_PERSONALITIES } from "../lib/voice-utils";
@@ -235,7 +235,7 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
-          <BrainCircuit className="w-4 h-4" />
+          <Sparkles className="w-4 h-4" />
           <span>Memory</span>
         </button>
         <button
@@ -270,7 +270,9 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
           <form onSubmit={handleSave} className="flex flex-col gap-4">
             <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 flex flex-col gap-4">
               <div className="flex items-center gap-2 border-b border-gray-200 pb-3">
-                <BrainCircuit className="w-5 h-5 text-red-600" />
+                <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-red-600">
+                  <path d="M6 26V6L16 20L26 6V26" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
                 <h3 className="font-bold text-sm text-gray-900">Memory & Preferences</h3>
               </div>
               <p className="text-sm text-gray-600 leading-relaxed">
@@ -373,7 +375,7 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
                 <h3 className="font-bold text-sm text-gray-900">Voice & Speech</h3>
               </div>
               <p className="text-sm text-gray-600 leading-relaxed">
-                Configure how Talker AI speaks to you. Choose a voice accent and adjust speech settings.
+                Configure how Noryx speaks to you. Choose a voice accent and adjust speech settings.
               </p>
               
               <div className="space-y-4">

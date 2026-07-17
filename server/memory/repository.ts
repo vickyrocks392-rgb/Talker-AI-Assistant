@@ -40,7 +40,7 @@ export function createConversation(title: string): Conversation {
   const isGenerated = title === "New Conversation" ? 1 : 0;
   stmt.run(id, title, now, now, isGenerated);
 
-  console.log(`[TitleGenerator] Conversation created: id=${id}, title="${title}", title_generated=${isGenerated}`);
+  logger.debug(`Conversation created: id=${id}, title="${title}", title_generated=${isGenerated}`);
 
   return { id, title, createdAt: now, updatedAt: now, titleGenerated: isGenerated, activeDocuments: [] };
 }
@@ -71,7 +71,7 @@ export function getConversation(id: string): Conversation | undefined {
   }
 
   const retrievedDocs: ChatAttachment[] = row.activeDocuments ? JSON.parse(row.activeDocuments) as ChatAttachment[] : [];
-  logger.info(`[getConversation] Conversation ${id} - Retrieved active docs: ${JSON.stringify(retrievedDocs.map((d) => d.documentId))}`);
+  logger.debug(`[getConversation] Conversation ${id} - Retrieved active docs: ${JSON.stringify(retrievedDocs.map((d) => d.documentId))}`);
 
   // Filter out documents that no longer exist in the documents table
   const validDocumentIds = getValidDocumentIds();
@@ -79,7 +79,7 @@ export function getConversation(id: string): Conversation | undefined {
   
   // If filtering removed any documents, update the conversation to clean up stale references
   if (filteredDocs.length !== retrievedDocs.length) {
-    logger.info(`[getConversation] Filtered out ${retrievedDocs.length - filteredDocs.length} deleted documents from conversation ${id}`);
+    logger.debug(`[getConversation] Filtered out ${retrievedDocs.length - filteredDocs.length} deleted documents from conversation ${id}`);
     const updateStmt = db.prepare(`
       UPDATE conversations
       SET active_documents = ?
@@ -131,7 +131,7 @@ export function listConversations(): Conversation[] {
     
     // If filtering removed any documents, update the conversation to clean up stale references
     if (filteredDocs.length !== retrievedDocs.length) {
-      logger.info(`[listConversations] Filtered out ${retrievedDocs.length - filteredDocs.length} deleted documents from conversation ${row.id}`);
+      logger.debug(`[listConversations] Filtered out ${retrievedDocs.length - filteredDocs.length} deleted documents from conversation ${row.id}`);
       const updateStmt = db.prepare(`
         UPDATE conversations
         SET active_documents = ?
@@ -348,8 +348,8 @@ export function setActiveDocuments(
   const existingDocs: ChatAttachment[] = existingRow?.active_documents
     ? (JSON.parse(existingRow.active_documents) as ChatAttachment[])
     : [];
-  logger.info(`[setActiveDocuments] Conversation ${conversationId} - Existing active docs: ${JSON.stringify(existingDocs.map((d) => d.documentId))}`);
-  logger.info(`[setActiveDocuments] Incoming attachments: ${JSON.stringify(activeDocuments.map((d) => d.documentId))}`);
+  logger.debug(`[setActiveDocuments] Conversation ${conversationId} - Existing active docs: ${JSON.stringify(existingDocs.map((d) => d.documentId))}`);
+  logger.debug(`[setActiveDocuments] Incoming attachments: ${JSON.stringify(activeDocuments.map((d) => d.documentId))}`);
   // ── END logging ────────────────────────────────────────────────────
 
   // Merge existing + incoming, deduplicating by documentId (incoming wins
@@ -369,10 +369,10 @@ export function setActiveDocuments(
   const filtered = merged.filter((doc) => validDocumentIds.has(doc.documentId));
   
   if (filtered.length !== merged.length) {
-    logger.info(`[setActiveDocuments] Filtered out ${merged.length - filtered.length} deleted documents from incoming set`);
+    logger.debug(`[setActiveDocuments] Filtered out ${merged.length - filtered.length} deleted documents from incoming set`);
   }
 
-  logger.info(`[setActiveDocuments] Persisted active docs: ${JSON.stringify(filtered.map((d) => d.documentId))}`);
+  logger.debug(`[setActiveDocuments] Persisted active docs: ${JSON.stringify(filtered.map((d) => d.documentId))}`);
 
   const activeDocumentsJson = filtered.length > 0
     ? JSON.stringify(filtered)
@@ -407,16 +407,16 @@ export function removeActiveDocument(
   const row = stmt.get(conversationId) as { active_documents: string | null } | undefined;
 
   if (!row || !row.active_documents) {
-    logger.info(`[removeActiveDocument] Conversation ${conversationId} has no active documents`);
+    logger.debug(`[removeActiveDocument] Conversation ${conversationId} has no active documents`);
     return;
   }
 
   const currentDocs = JSON.parse(row.active_documents) as ChatAttachment[];
-  logger.info(`[removeActiveDocument] Conversation ${conversationId} - Existing active docs: ${JSON.stringify(currentDocs.map((d) => d.documentId))}`);
-  logger.info(`[removeActiveDocument] Removing document: ${documentId}`);
+  logger.debug(`[removeActiveDocument] Conversation ${conversationId} - Existing active docs: ${JSON.stringify(currentDocs.map((d) => d.documentId))}`);
+  logger.debug(`[removeActiveDocument] Removing document: ${documentId}`);
 
   const updatedDocs = currentDocs.filter((doc) => doc.documentId !== documentId);
-  logger.info(`[removeActiveDocument] Final persisted active docs: ${JSON.stringify(updatedDocs.map((d) => d.documentId))}`);
+  logger.debug(`[removeActiveDocument] Final persisted active docs: ${JSON.stringify(updatedDocs.map((d) => d.documentId))}`);
 
   const updateStmt = db.prepare(`
     UPDATE conversations
@@ -470,13 +470,13 @@ export function removeActiveDocumentFromAllConversations(
         currentDocs = [];
       }
 
-      logger.info(`[removeActiveDocumentFromAllConversations] Conversation ${row.id} - Existing active docs: ${JSON.stringify(currentDocs.map((d) => d.documentId))}`);
-      logger.info(`[removeActiveDocumentFromAllConversations] Removing document ${documentId} from conversation ${row.id}`);
+      logger.debug(`[removeActiveDocumentFromAllConversations] Conversation ${row.id} - Existing active docs: ${JSON.stringify(currentDocs.map((d) => d.documentId))}`);
+      logger.debug(`[removeActiveDocumentFromAllConversations] Removing document ${documentId} from conversation ${row.id}`);
 
       const updatedDocs = currentDocs.filter((doc) => doc.documentId !== documentId);
 
       if (updatedDocs.length !== currentDocs.length) {
-        logger.info(`[removeActiveDocumentFromAllConversations] Conversation ${row.id} - Final persisted active docs: ${JSON.stringify(updatedDocs.map((d) => d.documentId))}`);
+        logger.debug(`[removeActiveDocumentFromAllConversations] Conversation ${row.id} - Final persisted active docs: ${JSON.stringify(updatedDocs.map((d) => d.documentId))}`);
         const updatedJson = updatedDocs.length > 0
           ? JSON.stringify(updatedDocs)
           : null;

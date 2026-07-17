@@ -1,5 +1,5 @@
 /**
- * Core type definitions for the Talker AI Tool Engine.
+ * Core type definitions for the Noryx AI Tool Engine.
  *
  * Every tool must conform to the {@link Tool} interface.  The planner
  * produces a {@link ToolRequest} that the executor resolves via the

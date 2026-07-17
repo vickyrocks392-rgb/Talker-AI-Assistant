@@ -1,6 +1,6 @@
 # Database Migrations
 
-Talker AI uses a lightweight, file-based SQLite migration system to manage database schema evolution. This document explains how migrations work, how to create new ones, and how to manage the database lifecycle.
+Noryx uses a lightweight, file-based SQLite migration system to manage database schema evolution. This document explains how migrations work, how to create new ones, and how to manage the database lifecycle.
 
 ## How Migrations Work
 

@@ -20,6 +20,7 @@ import {
   BookOpen,
   X,
 } from "lucide-react";
+import { Logo } from "./Logo";
 import {
   fetchSystemHealth,
   type SystemHealthDTO,
@@ -409,9 +410,7 @@ export const WorkspaceIntelligenceSidebar: React.FC<WorkspaceIntelligenceSidebar
       {/* Header - Fixed */}
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gray-900 text-white`}>
-            <Gauge className="h-4 w-4" />
-          </div>
+          <Logo size="sm" showText={false} />
           <div>
             <h2 className="text-sm font-bold tracking-tight text-gray-900">
               Workspace Intelligence

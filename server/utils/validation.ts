@@ -110,6 +110,7 @@ export function validateChatRequest(body: Record<string, unknown>): ChatRequest 
     persona: body.persona as ChatRequest["persona"],
     stream: typeof body.stream === "boolean" ? body.stream : undefined,
     attachments,
+    isVoice: typeof body.isVoice === "boolean" ? body.isVoice : undefined,
   };
 }
 

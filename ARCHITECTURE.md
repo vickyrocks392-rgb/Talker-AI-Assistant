@@ -1,4 +1,4 @@
-# Architecture Guide — Talker AI Backend
+# Architecture Guide — Noryx Backend
 
 ## Overview
 

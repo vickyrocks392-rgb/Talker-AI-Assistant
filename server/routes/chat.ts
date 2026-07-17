@@ -23,7 +23,7 @@ export async function handleChat(
   next: express.NextFunction,
 ): Promise<void> {
   try {
-    const { text, conversationId, history, persona, stream, attachments } = validateChatRequest(req.body as Record<string, unknown>);
+    const { text, conversationId, history, persona, stream, attachments, isVoice } = validateChatRequest(req.body as Record<string, unknown>);
 
     logger.debug("Chat request received", {
       textLength: text.length,
@@ -40,7 +40,7 @@ export async function handleChat(
       res.setHeader("Connection", "keep-alive");
 
       await handleStreaming(
-        { text, conversationId, history, persona, stream, attachments },
+        { text, conversationId, history, persona, stream, attachments, isVoice },
         // onToken
         (token: string) => {
           res.write(`data: ${JSON.stringify({ token })}\n\n`);
@@ -67,6 +67,7 @@ export async function handleChat(
       history,
       persona,
       attachments,
+      isVoice,
     });
 
     logger.debug("Chat response generated", {

@@ -1,5 +1,5 @@
 /**
- * Model registry and active-model resolution for Talker AI.
+ * Model registry and active-model resolution for Noryx.
  *
  * The model name / Ollama URL come from the centralised environment config
  * (`server/config/env.ts`).  This module validates the model name against

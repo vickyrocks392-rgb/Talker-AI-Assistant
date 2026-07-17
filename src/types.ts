@@ -1,5 +1,5 @@
 /**
- * Client-side TypeScript type definitions for Talker AI.
+ * Client-side TypeScript type definitions for Noryx.
  *
  * Re-exports shared domain types (Persona, MapAction, ConversationRole)
  * from `shared/types.ts` and declares client-only types (Firestore entities,

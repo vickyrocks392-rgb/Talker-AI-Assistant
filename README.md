@@ -1,8 +1,8 @@
-# Talker AI Assistant
-
+# Noryx
+ 
 **Full‑stack AI assistant powered by React, TypeScript, Express, and Ollama**
-
-Talker AI Assistant is a modern, production‑ready conversational AI platform that runs locally using Ollama’s large language models. It provides a seamless chat experience with voice interaction, real‑time streaming, and rich markdown rendering, all while keeping user data synchronized via Firebase.
+ 
+Noryx is a modern, production‑ready conversational AI platform that runs locally using Ollama’s large language models. It provides a seamless chat experience with voice interaction, real‑time streaming, and rich markdown rendering, all while keeping user data synchronized via Firebase.
 
 Built to give developers and teams a privacy‑first, extensible solution, the project combines a responsive React UI with a robust Express backend. It enables offline AI capabilities, integrates OpenStreetMap for location‑based features, and supports authentication and data persistence without external API costs.
 
@@ -61,7 +61,7 @@ Built to give developers and teams a privacy‑first, extensible solution, the p
 
 ## 🌐 Live Demo
 
-**Try Talker AI here:**
+**Try Noryx here:**
 
 https://talker-ai-assistant.onrender.com
 

@@ -1,5 +1,5 @@
 /**
- * Date-time tool for the Talker AI Tool Engine.
+ * Date-time tool for the Noryx AI Tool Engine.
  *
  * Returns the current date, time, ISO 8601 timestamp, and timezone.
  * This tool is stateless — it always returns the moment of execution.

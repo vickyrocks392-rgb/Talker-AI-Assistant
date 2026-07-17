@@ -101,6 +101,8 @@ export interface ChatRequest {
   history?: ConversationMessage[];
   persona?: Persona;
   attachments?: ChatAttachment[];
+  /** True when the user's text was produced by voice input (speech recognition). */
+  isVoice?: boolean;
 }
 
 /** Response body for `POST /api/chat`. */

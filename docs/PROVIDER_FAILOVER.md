@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Talker AI backend now includes automatic failover between multiple AI providers. If the primary provider fails, the system automatically retries with the next provider in the priority chain, ensuring maximum uptime and reliability.
+The Noryx backend now includes automatic failover between multiple AI providers. If the primary provider fails, the system automatically retries with the next provider in the priority chain, ensuring maximum uptime and reliability.
 
 ## Architecture
 

@@ -1,5 +1,5 @@
 /**
- * API client for Talker AI backend.
+ * API client for Noryx backend.
  *
  * Centralises all fetch calls so the rest of the frontend never
  * duplicates URL construction, header logic, or error handling.
@@ -158,6 +158,8 @@ export interface ChatRequestParams {
   persona: Persona;
   stream?: boolean;
   attachments?: ChatAttachment[];
+  /** True when the user's text was produced by voice input (speech recognition). */
+  isVoice?: boolean;
 }
 
 /** POST /api/chat — send a message (non-streaming). */
@@ -172,6 +174,7 @@ export function sendChatMessage(
       persona: params.persona,
       stream: params.stream ?? false,
       attachments: params.attachments ?? [],
+      isVoice: params.isVoice ?? false,
     }),
   });
 }
@@ -201,6 +204,7 @@ export function sendChatMessageStream(
         persona: params.persona,
         stream: true,
         attachments: params.attachments ?? [],
+        isVoice: params.isVoice ?? false,
       }),
     })
       .then(async (response) => {
@@ -231,19 +235,15 @@ export function sendChatMessageStream(
             if (data.token) {
               onToken(data.token);
             } else if (data.done) {
-              console.log("[AI Monitor DEBUG] SSE done event data:", JSON.stringify(data));
               finalResponse = {
                 replyText: data.replyText,
                 mapAction: data.mapAction,
                 searchSources: data.searchSources,
                 aiMonitor: data.aiMonitor,
               };
-              console.log("[AI Monitor DEBUG] finalResponse.aiMonitor:", finalResponse.aiMonitor);
             } else if (data.error) {
               reject(new Error(data.error));
               return;
-            } else if (!data.token && !data.done && !data.error) {
-              console.log("[AI Monitor DEBUG] Unhandled SSE event:", JSON.stringify(data));
             }
           }
         }

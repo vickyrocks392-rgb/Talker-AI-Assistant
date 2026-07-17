@@ -1,6 +1,6 @@
 /**
- * Talker AI Backend Server
- * 
+ * Noryx Backend Server
+ *
  * A production-quality conversational AI application using local Ollama models.
  * 
  * Architecture:
@@ -104,7 +104,7 @@ async function start() {
   try {
     // ── Environment ─────────────────────────────────────────────────
     logger.info("╔══════════════════════════════════════╗");
-    logger.info("║  Talker AI Assistant v2              ║");
+    logger.info("║  Noryx v2                              ║");
     logger.info("╚══════════════════════════════════════╝");
     logger.info("");
     logger.info("Environment:");

@@ -44,6 +44,8 @@ export interface ConversationServiceRequest {
   stream?: boolean;
   /** Optional attachments scoping RAG retrieval to specific documents. */
   attachments?: ChatAttachment[];
+  /** True when the user's text was produced by voice input (speech recognition). */
+  isVoice?: boolean;
 }
 
 export interface ConversationServiceResult {
@@ -76,24 +78,11 @@ async function resolveAttachments(
 ): Promise<ChatAttachment[] | undefined> {
   const { conversationId, attachments } = request;
 
-  logger.info(`[resolveAttachments] Conversation ID: ${conversationId}`);
-  logger.info(`[resolveAttachments] Incoming request attachments: ${attachments ? JSON.stringify(attachments.map((a) => a.documentId)) : "none"}`);
-
   // If request has attachments, use them and update conversation active documents
   if (attachments && attachments.length > 0) {
-    // ── DEBUG: Active conversation documents ───────────────────────────────
-    logger.info("[resolveAttachments] Request has attachments:");
-    for (const a of attachments) {
-      logger.info(`- ${a.filename} (${a.documentId})`);
-    }
-    // ── END DEBUG ───────────────────────────────────────────────────────────
-
     // Persist to conversation for future fallback and get the merged list
     if (conversationId) {
-      logger.info(`[resolveAttachments] Before setActiveDocuments - conversation active docs will be merged with incoming`);
       const mergedDocs = memoryService.setActiveDocuments(conversationId, attachments);
-      logger.info(`[resolveAttachments] After setActiveDocuments - merged docs: ${JSON.stringify(mergedDocs.map(d => d.documentId))}`);
-      // Return the merged list directly from setActiveDocuments
       return mergedDocs;
     }
     // Fall back to the request attachments if no conversationId
@@ -106,16 +95,9 @@ async function resolveAttachments(
     const activeDocs = conversation?.activeDocuments;
 
     if (activeDocs && activeDocs.length > 0) {
-      // ── DEBUG: Falling back to active conversation documents ─────────────────
-      logger.info("[resolveAttachments] Falling back to active conversation documents");
-      logger.info(`[resolveAttachments] Active docs: ${JSON.stringify(activeDocs.map((a) => a.documentId))}`);
-      // ── END DEBUG ───────────────────────────────────────────────────────────
-
       return activeDocs;
     }
   }
-
-  logger.info("[resolveAttachments] No attachments resolved");
   return undefined;
 }
 
@@ -218,15 +200,6 @@ export async function handleNonStreaming(
   // Step 1: Orchestrate — determine which context sources to use
   const { plan } = await orchestrate(text);
 
-  // ── DEBUG: ConversationService entry point ─────────────────────────────
-  logger.info("=== ConversationService Debug ===");
-  logger.info("attachments.length: " + (resolvedAttachments?.length ?? 0));
-  if (resolvedAttachments && resolvedAttachments.length > 0) {
-    logger.info("documentIds: " + resolvedAttachments.map((a) => a.documentId).join(", "));
-    logger.info("filenames: " + resolvedAttachments.map((a) => a.filename).join(", "));
-  }
-  // ── END DEBUG ───────────────────────────────────────────────────────────
-
   logger.debug("Execution plan", {
     mode: plan.mode,
     useMemory: plan.useMemory,
@@ -244,6 +217,7 @@ export async function handleNonStreaming(
     history: request.history,
     persona,
     executionPlan: plan,
+    isVoice: request.isVoice,
   };
 
   const hasAttachments = resolvedAttachments && resolvedAttachments.length > 0;
@@ -265,6 +239,7 @@ export async function handleNonStreaming(
 
   // Step 3: Call AI provider
   const provider = getAIProvider();
+  
   const response = await provider.chat({ messages });
   const parsed = parseChatResponse(response.message.content);
 
@@ -439,6 +414,7 @@ export async function handleStreaming(
     history: request.history,
     persona,
     executionPlan: plan,
+    isVoice: request.isVoice,
   };
 
   const hasAttachments = resolvedAttachments && resolvedAttachments.length > 0;

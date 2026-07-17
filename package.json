@@ -1,6 +1,6 @@
 {
-  "name": "talker-ai",
-  "description": "A high-performance full-stack English memory companion powered by Ollama, OpenStreetMap, Leaflet, and Firebase",
+  "name": "noryx-ai-workspace",
+  "description": "A high-performance full-stack AI workspace with memory, retrieval, and intelligent tooling",
   "version": "1.0.0",
   "private": true,
   "type": "module",

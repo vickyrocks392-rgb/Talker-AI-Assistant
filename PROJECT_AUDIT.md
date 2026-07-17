@@ -1,4 +1,4 @@
-# Project Audit — Talker AI
+# Project Audit — Noryx
 
 ## Executive Summary
 

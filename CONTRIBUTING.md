@@ -1,4 +1,4 @@
-# Contributing to Talker AI
+# Contributing to Noryx
 
 ## Development Guidelines
 

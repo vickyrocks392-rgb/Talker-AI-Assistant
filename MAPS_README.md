@@ -1,6 +1,6 @@
-# Talker AI Maps
-
-Talker AI uses OpenStreetMap, Leaflet, Nominatim, and OSRM for map search and directions. The map feature does not require paid services or map API keys.
+# Noryx Maps
+ 
+Noryx uses OpenStreetMap, Leaflet, Nominatim, and OSRM for map search and directions. The map feature does not require paid services or map API keys.
 
 ## Architecture
 
