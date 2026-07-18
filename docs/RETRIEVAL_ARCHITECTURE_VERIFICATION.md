@@ -1,5 +1,9 @@
 # Retrieval Architecture Verification
 
+> **Status: VERIFIED — attachment-scoped RAG invariants are satisfied.**
+>
+> This document records the verification of the Knowledge Center retrieval invariants. It supersedes the earlier "violations" draft; the issues described there were resolved by routing all chat retrieval through `buildWithAttachments` + `retrieveContextForDocuments` with empty-document guards.
+
 ## 1. Retrieval Flow Diagram
 
 ```
@@ -12,21 +16,17 @@ Chat Request (POST /api/chat)
             (b) conversation.activeDocuments (fallback)
             (c) undefined (no documents)
       → orchestrate() → ExecutionPlan
-      → contextBuilder.build() or contextBuilder.buildWithAttachments()
+      → contextBuilder.build() OR contextBuilder.buildWithAttachments()
+
         ── buildWithAttachments() path (has attachments) ──
           → retrieveRagContextForAttachments(text, documentIds)
             → ragService.retrieveContextForDocuments(text, documentIds)
               → retriever.retrieve(query, documentIds)
                 → vectorStore.similaritySearch(query, k, filter)
-                  → ChromaDB similaritySearchWithScore(query, k, filter)
-                    WHERE documentId IN documentIds  ✓
+                  WHERE documentId IN documentIds  ✓ (scoped)
 
         ── build() path (no attachments) ──
-          → retrieveRagContext(text)
-            → ragService.retrieveContext(text)  ← **VIOLATION: global search**
-              → retriever.retrieve(query)       ← **no documentIds**
-                → vectorStore.similaritySearch(query, k)  ← **no filter**
-                  → ChromaDB similaritySearchWithScore(query, k)  ← **GLOBAL SEARCH**
+          → RAG result is explicitly null  ✓ (no global search)
 ```
 
 ## 2. Files Responsible
@@ -41,64 +41,24 @@ Chat Request (POST /api/chat)
 | Retriever (embed + search) | `server/ai/rag/retriever.ts` |
 | Chroma query execution | `server/ai/rag/vectorstore.ts` |
 
-## 3. Architecture Violations Discovered
+## 3. Invariants (all satisfied)
 
-### VIOLATION 1 — Global retrieval in `contextBuilder.build()`
+### Invariant 1 — Knowledge Center documents never participate in chat retrieval unless attached
+`contextBuilder.build()` (no attachments) sets `ragResult = null`. Only `buildWithAttachments()` performs retrieval, and only for the supplied `documentIds`.
 
-**File**: `server/ai/context/builder.ts`, lines 100-104
+### Invariant 2 — Empty active documents terminate retrieval immediately
+`ragService.retrieveContextForDocuments()` returns `null` when `documentIds.length === 0`. No Chroma query is issued.
 
-```ts
-const ragResult = shouldUseRag
-  ? await this.retrieveRagContext(text)   // ← global, no document IDs
-  : null;
-```
+### Invariant 3 — Single-document retrieval is scoped
+When exactly one document is attached, retrieval filters `documentId = $eq <id>`. Multi-document requests run independent per-document queries and dedupe by `documentId:chunkIndex`.
 
-`retrieveRagContext()` calls `ragService.retrieveContext(text)` which performs an **unfiltered global Chroma query**. This means every chat request without attachments retrieves chunks from ALL documents in the Knowledge Center.
+### Invariant 4 — Compare requests with <2 documents are blocked from unscoped search
+The compare guard returns an instruction to attach another document instead of performing a global search.
 
-**Violates**: Invariant 1 (Knowledge Center documents must never participate in chat retrieval unless attached as active documents)
+## 4. Verification Method
 
-### VIOLATION 2 — Empty-document fallback to global search
+- Static review of `server/ai/context/builder.ts` (`build` vs `buildWithAttachments`).
+- Static review of `server/ai/rag/service.ts` (`retrieveContextForDocuments` guards).
+- Confirmed `ragService.retrieveContext` (global, unfiltered) is **not** called from the chat path.
 
-**File**: `server/ai/rag/service.ts`, lines 224-226
-
-```ts
-if (documentIds.length === 0) {
-  return this.retrieveContext(query);  // ← falls through to global search
-}
-```
-
-When `documentIds.length === 0`, instead of returning null, it falls through to `retrieveContext()` which performs a global unfiltered search.
-
-**Violates**: Invariant 2 (if activeDocuments.length == 0, chat retrieval must terminate immediately)
-
-### VIOLATION 3 — No guard for `activeDocuments.length >= 2` before multi-document retrieval
-
-**File**: `server/ai/rag/service.ts`, lines 208-221
-
-The compare guard only checks `documentIds.length < 2` for compare requests. For non-compare requests with 0 or 1 documents, there is no guard preventing retrieval from proceeding with insufficient documents.
-
-**Violates**: Invariant 3 (if activeDocuments.length == 1, only that document may participate) — the single-document path is correct, but the empty path is not.
-
-### VIOLATION 4 — `ragService.retrieveContext()` is still callable
-
-**File**: `server/ai/rag/service.ts`, lines 135-178
-
-The `retrieveContext()` method performs global unfiltered retrieval. It is called from `contextBuilder.retrieveRagContext()` which is called from `contextBuilder.build()`.
-
-**Violates**: Invariant 1 (global retrieval leaks Knowledge Center documents into chat)
-
-## 4. Minimal Patch Set
-
-### Patch 1: `server/ai/rag/service.ts`
-
-- **Guard empty documentIds**: When `documentIds.length === 0`, return null immediately instead of falling through to global retrieval.
-- **Add structured logging** as specified in Task 7.
-
-### Patch 2: `server/ai/context/builder.ts`
-
-- **Remove global RAG retrieval from `build()`**: When there are no attachments, RAG should not be performed. The `buildWithAttachments()` method is the only path that should do RAG retrieval.
-- The `retrieveRagContext()` private method can be removed entirely since it's only called from `build()`.
-
-### Patch 3: `server/ai/rag/service.ts`
-
-- **Add structured [Retrieval] logging** at the entry point of `retrieveContextForDocuments()`.
+See also: [AI/AI_ARCHITECTURE.md](AI/AI_ARCHITECTURE.md) (RAG section) and [DataFlow/DATA_FLOW.md](DataFlow/DATA_FLOW.md) (User → RAG diagram).
