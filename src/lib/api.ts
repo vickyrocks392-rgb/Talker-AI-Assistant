@@ -45,6 +45,21 @@ export interface AIMonitorDTO {
   memory?: { entryCount: number; avgConfidence: number };
   rag?: { activeDocCount: number; chunkCount: number };
   tools?: { executionCount: number; toolNames: string[] };
+  /** Security telemetry (Phase 7.4, Part 8). */
+  security?: SecurityTelemetryDTO;
+}
+
+/**
+ * Security telemetry returned alongside the chat response.
+ * Contains ONLY non-sensitive counters and labels — never user content.
+ */
+export interface SecurityTelemetryDTO {
+  triggered: boolean;
+  inputDecision: "allow" | "warn" | "redact" | "block";
+  outputDecision: "allow" | "warn" | "redact" | "block";
+  promptInjectionAttempts: number;
+  rejectedFiles: number;
+  rateLimited: boolean;
 }
 
 export interface ChatResponseDTO {
@@ -52,6 +67,8 @@ export interface ChatResponseDTO {
   mapAction: { type: "none" | "search" | "directions"; query?: string; directions?: unknown };
   searchSources?: string[];
   aiMonitor?: AIMonitorDTO;
+  /** Security telemetry for the request (Phase 7.4, Part 8). */
+  security?: SecurityTelemetryDTO;
 }
 
 // ── System Health (System Control Center) ──────────────────────────
@@ -240,6 +257,7 @@ export function sendChatMessageStream(
                 mapAction: data.mapAction,
                 searchSources: data.searchSources,
                 aiMonitor: data.aiMonitor,
+                security: data.security,
               };
             } else if (data.error) {
               reject(new Error(data.error));

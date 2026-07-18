@@ -14,6 +14,11 @@
  * GET    /api/rag/stats            Get document and chunk statistics
  * POST   /api/rag/summarize/:id   Generate AI summary for a document
  *
+ * Security (Phase 7.4):
+ *   - FileValidationService validates uploads (MIME, ext, size, duplicates)
+ *   - PromptInjectionDetector scans queries and document text
+ *   - Security telemetry attached to responses
+ *
  * @module server/routes/rag
  */
 
@@ -30,6 +35,12 @@ import { ValidationError, NotFoundError } from "../utils/errors";
 import { getDatabase } from "../db/database";
 import { memoryService } from "../memory/service";
 import type { RagDocument } from "../ai/rag/types";
+import {
+  getFileValidationService,
+  getPromptInjectionDetector,
+  createSecurityMonitor,
+  SecurityConfig,
+} from "../security";
 
 const logger = createLogger("RagRoute");
 
@@ -95,13 +106,41 @@ router.post(
     });
   },
   async (req, res, next) => {
+    const sec = createSecurityMonitor();
     try {
       const file = req.file;
       if (!file) {
         throw new ValidationError("No file provided. Send a file as the 'file' field.", "file");
       }
 
-      logger.info(`Received file upload: ${file.originalname} (${file.size} bytes, ${file.mimetype})`);
+      // ── Security: validate the uploaded file ──
+      const db = getDatabase();
+      const existing = db
+        .prepare("SELECT original_name, size FROM documents")
+        .all() as Array<{ original_name: string; size: number }>;
+
+      const fileSvc = getFileValidationService();
+      const validation = fileSvc.validate({
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        existingIdentifiers: existing.map((e) => ({ name: e.original_name, size: e.size })),
+      });
+
+      if (validation.decision === "block") {
+        for (const t of validation.threats) sec.recordRejectedFile(t.type);
+        if (validation.duplicate) sec.recordDuplicateFile();
+        logger.warn(`Rejected file upload: ${file.originalname}`, {
+          threats: validation.threats.map((t) => t.type),
+        });
+        res.status(400).json({
+          error: { code: "FILE_REJECTED", message: validation.message ?? "File rejected." },
+          security: sec.getData(),
+        });
+        return;
+      }
+
+      logger.info(`Received file upload: ${validation.safeFilename} (${file.size} bytes, ${file.mimetype})`);
 
       const documentId = uuidv4();
       let pageCount = 0;
@@ -116,19 +155,31 @@ router.post(
         pageCount = (result.metadata.pageCount as number) || 0;
         textLength = content.length;
       } else {
-        // For text-based files, use the buffer directly
         content = file.buffer.toString("utf-8");
         textLength = content.length;
         pageCount = 1;
       }
 
-      logger.info(`File extracted: id=${documentId} filename=${file.originalname} pages=${pageCount} chars=${textLength}`);
+      // ── Security: scan document text for prompt-injection / poisoning ──
+      const injector = getPromptInjectionDetector();
+      const scan = injector.scan(content);
+      if (scan.detected) {
+        sec.recordPromptInjection(scan.patterns, scan.score);
+        logger.warn("Prompt-injection patterns found in uploaded document", {
+          patterns: scan.patterns,
+          score: scan.score,
+        });
+        // Strip malicious instructions but continue indexing safely.
+        if (scan.modified) content = scan.cleaned;
+      }
+
+      logger.info(`File extracted: id=${documentId} filename=${validation.safeFilename} pages=${pageCount} chars=${textLength}`);
 
       // Split into chunks
       const splitter = new RagSplitter();
       const chunks = await splitter.splitText(content, {
         documentId,
-        filename: file.originalname,
+        filename: validation.safeFilename,
       });
 
       const totalChunks = chunks.length;
@@ -151,28 +202,28 @@ router.post(
       logger.info(`Indexed ${totalChunks} chunks for document ${documentId} in ChromaDB`);
 
       // Persist document metadata to SQLite
-      const db = getDatabase();
       const now = new Date().toISOString();
-      
+
       // Deactivate any previously active document
       db.prepare("UPDATE documents SET is_active = 0 WHERE is_active = 1").run();
-      
+
       const embeddingModel = process.env.RAG_EMBEDDING_MODEL || "nomic-embed-text";
 
       db.prepare(`
         INSERT INTO documents (id, filename, original_name, mime_type, size, page_count, text_length, chunk_count, status, is_active, embedding_model, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'indexed', 1, ?, ?, ?)
-      `).run(documentId, file.originalname, file.originalname, file.mimetype, file.size, pageCount, textLength, totalChunks, embeddingModel, now, now);
+      `).run(documentId, validation.safeFilename, validation.safeFilename, file.mimetype, file.size, pageCount, textLength, totalChunks, embeddingModel, now, now);
 
       logger.info(`Document metadata saved to SQLite: ${documentId}`);
 
       res.status(201).json({
         documentId,
-        filename: file.originalname,
+        filename: validation.safeFilename,
         pageCount,
         textLength,
         chunkCount: totalChunks,
         status: "indexed",
+        security: sec.getData(),
       });
     } catch (error) {
       next(error);
@@ -185,6 +236,7 @@ router.post(
  * Perform a semantic search over indexed documents.
  */
 router.post("/rag/search", async (req, res, next) => {
+  const sec = createSecurityMonitor();
   try {
     const { query, k = 5 } = req.body as { query: string; k?: number };
 
@@ -192,12 +244,25 @@ router.post("/rag/search", async (req, res, next) => {
       throw new ValidationError("Query must be a non‑empty string", "query");
     }
 
-    logger.info(`Search request received: query="${query.slice(0, 80)}...", k=${k}`);
+    // ── Security: scan query for prompt injection ──
+    const injector = getPromptInjectionDetector();
+    const scan = injector.scan(query);
+    let safeQuery = query;
+    if (scan.detected) {
+      sec.recordPromptInjection(scan.patterns, scan.score);
+      logger.warn("Prompt-injection attempt in RAG search query", {
+        patterns: scan.patterns,
+        score: scan.score,
+      });
+      if (scan.modified) safeQuery = scan.cleaned;
+    }
+
+    logger.info(`Search request received: query="${safeQuery.slice(0, 80)}...", k=${k}`);
 
     const embeddings = new RagEmbeddings();
     const vectorStore = new RagVectorStore(embeddings);
     const retriever = new RagRetriever(embeddings, vectorStore);
-    const docs = await retriever.retrieve(query);
+    const docs = await retriever.retrieve(safeQuery);
 
     logger.info(`Search complete, retrieved ${docs.length} documents`);
 
@@ -212,7 +277,7 @@ router.post("/rag/search", async (req, res, next) => {
       },
     }));
 
-    res.json({ results });
+    res.json({ results, security: sec.getData() });
   } catch (error) {
     logger.error(`Error in search route: ${error}`);
     next(error);
@@ -229,7 +294,6 @@ router.post("/rag/reset", async (_req, res, next) => {
     const { ragService } = await import("../ai/rag/service");
     await ragService.reset();
 
-    // Also clear document metadata from SQLite
     const db = getDatabase();
     db.prepare("DELETE FROM documents").run();
 
@@ -321,11 +385,9 @@ router.post("/rag/documents/active", async (req, res, next) => {
     }
 
     const db = getDatabase();
-    
-    // Deactivate all documents
+
     db.prepare("UPDATE documents SET is_active = 0").run();
-    
-    // Activate the selected document
+
     const result = db.prepare("UPDATE documents SET is_active = 1, updated_at = ? WHERE id = ?").run(new Date().toISOString(), documentId);
 
     if (result.changes === 0) {
@@ -379,15 +441,12 @@ router.get("/rag/documents/:id", async (req, res, next) => {
 router.get("/rag/documents/:id/text", async (req, res, next) => {
   try {
     const documentId = req.params.id;
-    
-    // Retrieve chunks from ChromaDB by searching with document ID
+
     const embeddings = new RagEmbeddings();
     const vectorStore = new RagVectorStore(embeddings);
-    
-    // Use a broad search to get chunks for this document
+
     const results = await vectorStore.similaritySearch(documentId, 100);
-    
-    // Filter results to only include chunks from this document
+
     const docChunks = results
       .filter((r) => r.document.metadata?.documentId === documentId)
       .sort((a, b) => ((a.document.metadata?.chunkIndex as number) || 0) - ((b.document.metadata?.chunkIndex as number) || 0))
@@ -409,33 +468,21 @@ router.get("/rag/documents/:id/text", async (req, res, next) => {
  * DELETE /api/rag/documents/:id
  * Delete a document, its ChromaDB embeddings, and its conversation
  * active-document references atomically.
- *
- * All three removals (Chroma vectors, SQLite metadata, conversation
- * active documents) must succeed together. If any step fails, the
- * SQLite metadata deletion is rolled back so the document remains
- * fully intact and retrievable.
  */
 router.delete("/rag/documents/:id", async (req, res, next) => {
   try {
     const documentId = req.params.id;
     const db = getDatabase();
 
-    // Verify document exists
     const row = db.prepare("SELECT * FROM documents WHERE id = ?").get(documentId) as any;
     if (!row) {
       throw new NotFoundError(`Document ${documentId} not found`);
     }
 
-    // Step 1: Remove Chroma vectors for this document.
-    // This is the first, non-transactional step. If it fails we abort
-    // before touching SQLite so the document stays fully consistent.
     const embeddings = new RagEmbeddings();
     const vectorStore = new RagVectorStore(embeddings);
     await vectorStore.deleteDocument(documentId);
 
-    // Step 2 + 3: Remove SQLite metadata and purge the document from every
-    // conversation's active documents inside a single transaction so the
-    // two SQLite mutations are atomic.
     const deleteMeta = db.prepare("DELETE FROM documents WHERE id = ?");
     const purgeActive = db.transaction(() => {
       const remaining = memoryService.removeActiveDocumentFromAllConversations(documentId);
@@ -463,28 +510,25 @@ router.post("/rag/documents/:id/reindex", async (req, res, next) => {
     const documentId = req.params.id;
     const db = getDatabase();
 
-    // Verify document exists
     const row = db.prepare("SELECT * FROM documents WHERE id = ?").get(documentId) as any;
     if (!row) {
       throw new NotFoundError(`Document ${documentId} not found`);
     }
 
-    // Update status to indexing
     db.prepare("UPDATE documents SET status = 'indexing', updated_at = ? WHERE id = ?").run(new Date().toISOString(), documentId);
 
-    // Delete existing embeddings from ChromaDB
     try {
       const embeddings = new RagEmbeddings();
       const vectorStore = new RagVectorStore(embeddings);
       const results = await vectorStore.similaritySearch(documentId, 1000);
       const docChunks = results.filter((r) => r.document.metadata?.documentId === documentId);
-      
+
       if (docChunks.length > 0) {
         const allResults = await vectorStore.similaritySearch("", 1000);
         const otherChunks = allResults.filter((r) => r.document.metadata?.documentId !== documentId);
-        
+
         await vectorStore.deleteAll();
-        
+
         if (otherChunks.length > 0) {
           const reAddEmbeddings = new RagEmbeddings();
           const reAddStore = new RagVectorStore(reAddEmbeddings);
@@ -495,8 +539,6 @@ router.post("/rag/documents/:id/reindex", async (req, res, next) => {
       logger.warn(`Failed to delete old embeddings: ${err}`);
     }
 
-    // We can't re-extract text from the original file since we only store metadata
-    // For now, mark as indexed with existing chunk count
     db.prepare("UPDATE documents SET status = 'indexed', updated_at = ? WHERE id = ?").run(new Date().toISOString(), documentId);
 
     logger.info(`Document reindexed: ${documentId}`);
@@ -513,13 +555,12 @@ router.post("/rag/documents/:id/reindex", async (req, res, next) => {
 router.get("/rag/stats", async (_req, res, next) => {
   try {
     const db = getDatabase();
-    
+
     const docCount = db.prepare("SELECT COUNT(*) as count FROM documents").get() as any;
     const totalChunks = db.prepare("SELECT COALESCE(SUM(chunk_count), 0) as total FROM documents").get() as any;
     const indexedCount = db.prepare("SELECT COUNT(*) as count FROM documents WHERE status = 'indexed'").get() as any;
     const activeDoc = db.prepare("SELECT * FROM documents WHERE is_active = 1 LIMIT 1").get() as any;
 
-    // Check ChromaDB health
     let vectorDbStatus = "unavailable";
     let vectorCount = -1;
     try {
@@ -564,19 +605,17 @@ router.post("/rag/summarize/:id", async (req, res, next) => {
       throw new NotFoundError(`Document ${documentId} not found`);
     }
 
-    // Retrieve document text from ChromaDB
     const embeddings = new RagEmbeddings();
     const vectorStore = new RagVectorStore(embeddings);
     const results = await vectorStore.similaritySearch(documentId, 100);
-    
+
     const docChunks = results
       .filter((r) => r.document.metadata?.documentId === documentId)
       .sort((a, b) => ((a.document.metadata?.chunkIndex as number) || 0) - ((b.document.metadata?.chunkIndex as number) || 0))
       .map((r) => r.document.pageContent);
 
-    const fullText = docChunks.join("\n\n").slice(0, 8000); // Limit to 8k chars for summarization
+    const fullText = docChunks.join("\n\n").slice(0, 8000);
 
-    // Generate summary using AI provider
     let summary = "";
     let keyPoints: string[] = [];
     let entities: string[] = [];
@@ -617,7 +656,6 @@ Return ONLY valid JSON.`;
         { role: "user", content: summaryPrompt },
       ]);
 
-      // Try to parse the response as JSON
       try {
         const parsed = JSON.parse(response);
         summary = parsed.summary || "";
@@ -626,7 +664,6 @@ Return ONLY valid JSON.`;
         technologies = parsed.technologies || [];
         skills = parsed.skills || [];
       } catch {
-        // If JSON parsing fails, use the raw response as summary
         summary = response;
       }
     } catch (err) {

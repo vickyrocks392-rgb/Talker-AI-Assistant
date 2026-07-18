@@ -1,26 +1,18 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { 
-  FileText, 
-  Upload, 
-  Trash2, 
-  Check, 
-  X, 
-  AlertCircle, 
-  RefreshCw,
+import {
+  FileText,
+  Upload,
+  Trash2,
+  X,
+  AlertCircle,
   BookOpen,
   Database,
-  Activity,
   File,
-  FilePlus,
   Loader2,
-  Copy,
   Sparkles,
   ChevronDown,
-  ChevronUp,
   Eye,
-  Search,
-  RefreshCcw,
 } from "lucide-react";
 import { useDocumentManager } from "../hooks/useDocumentManager";
 import { DocumentPreviewDrawer } from "./DocumentPreviewDrawer";
@@ -28,10 +20,7 @@ import { DocumentInsightsModal } from "./DocumentInsightsModal";
 
 // Simple logger for frontend
 const logger = {
-  info: (msg: string, data?: any) => console.log(`[KnowledgeCenter]`, msg, data),
   error: (msg: string, error?: any) => console.error(`[KnowledgeCenter]`, msg, error),
-  warn: (msg: string, data?: any) => console.warn(`[KnowledgeCenter]`, msg, data),
-  debug: (msg: string, data?: any) => console.debug(`[KnowledgeCenter]`, msg, data),
 };
 
 // Types for RAG document
@@ -235,6 +224,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
           onClick={() => onClose?.()}
           className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
           title="Collapse Knowledge Center"
+          aria-label="Collapse Knowledge Center"
         >
           <ChevronDown className="w-4 h-4" />
         </motion.button>

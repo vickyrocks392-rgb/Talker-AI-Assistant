@@ -11,8 +11,25 @@ import {
   FileText,
   Wrench,
   Zap,
+  Shield,
+  ShieldAlert,
 } from "lucide-react";
-import type { AIMonitorDTO } from "../lib/api";
+import type { AIMonitorDTO, SecurityTelemetryDTO } from "../lib/api";
+import { useDialogA11y } from "../hooks/useDialogA11y";
+
+/** Map a security decision to a chip style. */
+function decisionChip(decision: SecurityTelemetryDTO["inputDecision"]): { label: string; accent: string } {
+  switch (decision) {
+    case "block":
+      return { label: "Blocked", accent: "border-red-200 bg-red-100/60 text-red-700" };
+    case "redact":
+      return { label: "Redacted", accent: "border-amber-200 bg-amber-100/60 text-amber-700" };
+    case "warn":
+      return { label: "Warned", accent: "border-yellow-200 bg-yellow-100/60 text-yellow-700" };
+    default:
+      return { label: "Allowed", accent: "border-green-200 bg-green-100/60 text-green-700" };
+  }
+}
 
 interface AIMonitorPanelProps {
   data: AIMonitorDTO | null;
@@ -100,6 +117,7 @@ export const AIMonitorPanel: React.FC<AIMonitorPanelProps> = ({ data }) => {
   const hasMemory = !!data.memory && data.memory.entryCount > 0;
   const hasRag = !!data.rag && data.rag.activeDocCount > 0;
   const hasTools = !!data.tools && data.tools.executionCount > 0;
+  const sec = data.security;
 
   // Compact collapsed summary chips
   const collapsedTags: string[] = [data.provider, data.mode];
@@ -109,6 +127,8 @@ export const AIMonitorPanel: React.FC<AIMonitorPanelProps> = ({ data }) => {
       {/* Collapsed state: integrated with message response */}
       <button
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-label="Toggle AI Monitor details"
         className="group flex w-full items-center justify-between px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-700"
       >
         <div className="flex items-center gap-2">
@@ -125,6 +145,12 @@ export const AIMonitorPanel: React.FC<AIMonitorPanelProps> = ({ data }) => {
           ))}
           <span className="text-gray-300">·</span>
           <span className="font-mono text-[10px] text-yellow-600">{data.latencyMs}ms</span>
+          {sec?.triggered && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-100/60 px-2 py-0.5 text-[10px] font-medium text-red-700">
+              <ShieldAlert className="h-3 w-3" />
+              Security
+            </span>
+          )}
         </div>
         <span className="flex items-center gap-1 text-gray-400">
           <span className="text-[10px] font-medium opacity-0 transition-opacity group-hover:opacity-100">
@@ -279,6 +305,59 @@ export const AIMonitorPanel: React.FC<AIMonitorPanelProps> = ({ data }) => {
                         </Chip>
                       ))}
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Security section (Phase 7.4, Part 8) */}
+              {sec && (
+                <div className="mt-3 rounded-lg border border-emerald-200/60 bg-emerald-50/30 p-3">
+                  <SectionTitle icon={<Shield className="h-3.5 w-3.5" />}>
+                    Security
+                  </SectionTitle>
+                  <div className="border-t border-emerald-100 pt-1">
+                    <StatRow
+                      label="Input Filter"
+                      value={
+                        <Chip accent={decisionChip(sec.inputDecision).accent}>
+                          {decisionChip(sec.inputDecision).label}
+                        </Chip>
+                      }
+                    />
+                    <StatRow
+                      label="Output Filter"
+                      value={
+                        <Chip accent={decisionChip(sec.outputDecision).accent}>
+                          {decisionChip(sec.outputDecision).label}
+                        </Chip>
+                      }
+                    />
+                    <StatRow
+                      label="Prompt Injection Attempts"
+                      value={
+                        <span className={sec.promptInjectionAttempts > 0 ? "text-red-700" : "text-gray-800"}>
+                          {sec.promptInjectionAttempts}
+                        </span>
+                      }
+                    />
+                    <StatRow
+                      label="Rejected Files"
+                      value={
+                        <span className={sec.rejectedFiles > 0 ? "text-red-700" : "text-gray-800"}>
+                          {sec.rejectedFiles}
+                        </span>
+                      }
+                    />
+                    <StatRow
+                      label="Rate Limited"
+                      value={
+                        sec.rateLimited ? (
+                          <Chip accent="border-red-200 bg-red-100/60 text-red-700">Yes</Chip>
+                        ) : (
+                          <Chip accent="border-green-200 bg-green-100/60 text-green-700">No</Chip>
+                        )
+                      }
+                    />
                   </div>
                 </div>
               )}

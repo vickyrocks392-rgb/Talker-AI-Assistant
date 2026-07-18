@@ -205,6 +205,52 @@ export default function App() {
     // Reset drag flag
     hasDraggedRef.current = false;
   }, []);
+
+  // Touch drag support for the floating button (mobile)
+  const handleButtonTouchStart = useCallback((e: { touches: { clientY: number }[] }) => {
+    isDraggingRef.current = true;
+    hasDraggedRef.current = false;
+    dragStartYRef.current = e.touches[0].clientY;
+    buttonStartYRef.current = buttonY;
+  }, [buttonY]);
+
+  useEffect(() => {
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDraggingRef.current) return;
+      const deltaY = e.touches[0].clientY - dragStartYRef.current;
+      if (Math.abs(deltaY) >= 5) hasDraggedRef.current = true;
+      const buttonHeight = 80;
+      const newY = buttonStartYRef.current + deltaY;
+      const constrainedY = Math.max(
+        buttonHeight / 2,
+        Math.min(window.innerHeight - buttonHeight / 2, newY)
+      );
+      setButtonY(constrainedY);
+    };
+    const handleTouchEnd = () => {
+      isDraggingRef.current = false;
+    };
+    window.addEventListener("touchmove", handleTouchMove, { passive: true });
+    window.addEventListener("touchend", handleTouchEnd);
+    return () => {
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, []);
+
+  // Escape closes the Knowledge Center and Workspace Intelligence panels
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (knowledgeOpen) {
+        setKnowledgeOpen(false);
+      } else if (workspaceIntelligenceOpen) {
+        setWorkspaceIntelligenceOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [knowledgeOpen, workspaceIntelligenceOpen]);
   
   // Track if auto-expansion has been triggered for each event category (with localStorage persistence)
   const autoExpandTrackerRef = useRef<Set<string>>(new Set());
@@ -641,8 +687,11 @@ export default function App() {
           duration: 0.3,
           ease: [0.4, 0, 0.2, 1],
         }}
-        className="overflow-hidden flex-shrink-0 bg-white border-l border-gray-200 shadow-xl"
+        className="overflow-hidden flex-shrink-0 bg-white border-l border-gray-200 shadow-xl max-w-full"
         style={{ minWidth: 0 }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Knowledge Center"
       >
         <div className="h-full flex flex-col min-h-0">
           {knowledgeOpen && (
@@ -679,7 +728,10 @@ export default function App() {
                 stiffness: 220,
                 mass: 0.8
               }}
-              className="fixed top-0 bottom-0 right-0 w-full sm:w-[380px] bg-white border-l border-gray-200 z-50 lg:static lg:h-full lg:flex-shrink-0 shadow-2xl flex flex-col"
+              className="fixed top-0 bottom-0 right-0 w-full sm:w-[380px] bg-white border-l border-gray-200 z-50 lg:static lg:h-full lg:flex-shrink-0 shadow-2xl flex flex-col safe-top safe-bottom"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Workspace Intelligence"
             >
               <WorkspaceIntelligenceSidebar 
                 aiMonitorData={aiMonitorData} 
@@ -699,6 +751,7 @@ export default function App() {
             whileTap={{ scale: 0.95 }}
             onClick={handleButtonClick}
             onMouseDown={handleButtonMouseDown}
+            onTouchStart={handleButtonTouchStart}
             style={{ 
               position: 'fixed',
               right: 0,
@@ -706,7 +759,8 @@ export default function App() {
               transform: 'translateY(-50%)',
               zIndex: 30,
             }}
-            className="bg-gray-900 hover:bg-gray-800 text-white px-3 py-4 rounded-l-xl shadow-lg flex items-center gap-2 transition-colors cursor-move"
+            className="bg-gray-900 hover:bg-gray-800 text-white px-3 py-4 rounded-l-xl shadow-lg flex items-center gap-2 transition-colors cursor-move touch-target safe-right"
+            aria-label="Open Workspace Intelligence"
             title="Drag to reposition • Click to open"
           >
             <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">

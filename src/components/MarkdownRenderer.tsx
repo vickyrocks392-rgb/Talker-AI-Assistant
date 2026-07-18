@@ -185,6 +185,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
                       onClick={() => navigator.clipboard.writeText(block.code)}
                       className="text-gray-500 hover:text-gray-700 transition"
                       title="Copy code"
+                      aria-label="Copy code to clipboard"
                     >
                       <Copy className="w-3.5 h-3.5" />
                     </button>

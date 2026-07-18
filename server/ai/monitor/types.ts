@@ -9,6 +9,7 @@
  *   - whether RAG was used
  *   - whether tools executed
  *   - how long the request took
+ *   - security telemetry (Phase 7.4, Part 8)
  *
  * This is NOT an observability platform. It is a lightweight metadata
  * object that travels through the request lifecycle and is returned
@@ -57,6 +58,25 @@ export interface ToolMetadata {
 }
 
 /**
+ * Security telemetry captured during the request (Phase 7.4, Part 8).
+ * Contains ONLY non-sensitive counters and labels.
+ */
+export interface SecurityMetadata {
+  /** True if any security layer intervened. */
+  triggered: boolean;
+  /** Input filter disposition. */
+  inputDecision: "allow" | "warn" | "redact" | "block";
+  /** Output filter disposition. */
+  outputDecision: "allow" | "warn" | "redact" | "block";
+  /** Number of prompt-injection attempts detected. */
+  promptInjectionAttempts: number;
+  /** Number of files rejected. */
+  rejectedFiles: number;
+  /** True if the request was rate-limited. */
+  rateLimited: boolean;
+}
+
+/**
  * Provider metadata captured during the request.
  */
 export interface ProviderMetadata {
@@ -86,4 +106,6 @@ export interface AIMonitorData {
   rag?: RagMetadata;
   /** Tool metadata (undefined if no tools were executed). */
   tools?: ToolMetadata;
+  /** Security telemetry (undefined if no security events). */
+  security?: SecurityMetadata;
 }

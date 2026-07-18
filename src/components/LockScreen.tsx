@@ -378,7 +378,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                   </div>
 
                   {/* PIN dots display */}
-                  <div className={`flex gap-4 my-2 ${pinError ? "animate-shake" : ""}`}>
+                  <div className={`flex gap-4 my-2 ${pinError ? "animate-shake" : ""}`} aria-hidden="true">
                     {[0, 1, 2, 3].map((idx) => {
                       const active = pinInput.length > idx;
                       return (
@@ -388,8 +388,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({
                             pinError
                               ? "bg-red-500 border-red-400 shadow-[0_0_12px_rgba(239,68,68,0.4)]"
                               : active
-                              ? "bg-red-600 border-red-500 shadow-[0_0_12px_rgba(220,38,38,0.3)]"
-                              : "border-zinc-700 bg-black"
+                                ? "bg-red-600 border-red-500 shadow-[0_0_12px_rgba(220,38,38,0.3)]"
+                                : "border-zinc-700 bg-black"
                           }`}
                         />
                       );

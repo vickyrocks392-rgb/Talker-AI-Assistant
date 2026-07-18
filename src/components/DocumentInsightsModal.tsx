@@ -17,6 +17,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import type { RagDocument } from "./KnowledgeCenter";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 
 interface DocumentInsightsModalProps {
   document: RagDocument | null;
@@ -45,6 +46,8 @@ export const DocumentInsightsModal: React.FC<DocumentInsightsModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [insights, setInsights] = useState<DocumentSummary | null>(null);
+  // Accessibility: Escape to close, focus trap, focus restore
+  const dialogRef = useDialogA11y(isOpen, onClose);
 
   // Fetch summary when modal opens
   useEffect(() => {
@@ -154,12 +157,16 @@ ${insights.skills.map(skill => `- ${skill}`).join('\n')}
           onClick={onClose}
         >
           <motion.div
+            ref={dialogRef}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col safe-top safe-bottom"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Document Insights"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -174,6 +181,7 @@ ${insights.skills.map(skill => `- ${skill}`).join('\n')}
               </div>
               <button
                 onClick={onClose}
+                aria-label="Close document insights"
                 className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition"
               >
                 <X className="w-5 h-5" />

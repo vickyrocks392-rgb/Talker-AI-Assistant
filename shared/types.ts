@@ -65,6 +65,25 @@ export interface ChatAttachment {
 }
 
 /**
+ * Security telemetry returned alongside the chat response (Phase 7.4, Part 8).
+ * Contains ONLY non-sensitive counters and labels — never user content.
+ */
+export interface SecurityTelemetryDTO {
+  /** True if any security layer intervened on this request. */
+  triggered: boolean;
+  /** Input filter disposition. */
+  inputDecision: "allow" | "warn" | "redact" | "block";
+  /** Output filter disposition. */
+  outputDecision: "allow" | "warn" | "redact" | "block";
+  /** Number of prompt-injection attempts detected. */
+  promptInjectionAttempts: number;
+  /** Number of files rejected. */
+  rejectedFiles: number;
+  /** True if the request was rate-limited. */
+  rateLimited: boolean;
+}
+
+/**
  * AI Monitor data returned alongside the chat response.
  * This is the frontend-facing shape of the metadata object.
  */
@@ -92,6 +111,8 @@ export interface AIMonitorDataDTO {
     executionCount: number;
     toolNames: string[];
   };
+  /** Security telemetry (Phase 7.4, Part 8). */
+  security?: SecurityTelemetryDTO;
 }
 
 /** Request body for `POST /api/chat`. */
@@ -112,6 +133,8 @@ export interface ChatResponse {
   searchSources?: string[];
   /** AI Monitor metadata for the request (undefined for legacy responses). */
   aiMonitor?: AIMonitorDataDTO;
+  /** Security telemetry for the request (Phase 7.4, Part 8). */
+  security?: SecurityTelemetryDTO;
 }
 
 /** Request body for `POST /api/summarize`. */

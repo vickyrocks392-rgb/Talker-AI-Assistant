@@ -192,17 +192,8 @@ export class RagVectorStore implements VectorStore {
    * @param filter - Optional metadata filter to apply during search (e.g., { documentId: ["id1", "id2"] }).
    * @returns Array of search results with documents and similarity scores.
    */
-   async similaritySearch(query: string, k: number = 4, filter?: Record<string, unknown>): Promise<SearchResult[]> {
-     // ── DEBUG: VectorStore entry point ───────────────────────────────────────
-     logger.info("=== VectorStore Debug ===");
-     if (filter && Object.keys(filter).length > 0) {
-       logger.info("metadata filter: " + JSON.stringify(filter));
-     } else {
-       logger.info("metadata filter: none");
-     }
-     // ── END DEBUG ───────────────────────────────────────────────────────────
-
-     const store = await this.getStore();
+    async similaritySearch(query: string, k: number = 4, filter?: Record<string, unknown>): Promise<SearchResult[]> {
+      const store = await this.getStore();
 
      // eslint-disable-next-line @typescript-eslint/no-explicit-any
      let rawResults: any;
@@ -234,15 +225,7 @@ export class RagVectorStore implements VectorStore {
        };
      });
 
-     // ── DEBUG: VectorStore results ───────────────────────────────────────────
-     logger.info("results count: " + searchResults.length);
-     if (searchResults.length > 0) {
-       const firstResult = searchResults[0];
-       logger.info("first result metadata: " + JSON.stringify(firstResult.document.metadata));
-     }
-     // ── END DEBUG ───────────────────────────────────────────────────────────
-
-     logger.debug(`Found ${searchResults.length} results`);
+      logger.debug(`Found ${searchResults.length} results`);
 
      return searchResults;
    }

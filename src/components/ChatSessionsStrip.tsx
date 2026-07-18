@@ -74,6 +74,7 @@ export const ChatSessionsStrip: React.FC<ChatSessionsStripProps> = ({
             onClick={() => setSearchQuery("")}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg hover:bg-gray-200 text-gray-500 hover:text-gray-700 cursor-pointer transition button-press"
             title="Clear search"
+            aria-label="Clear search"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -289,6 +290,7 @@ export const ChatSessionsStrip: React.FC<ChatSessionsStripProps> = ({
                     }}
                     className="delete-btn p-1.5 rounded-lg hover:bg-red-50 text-gray-400 cursor-pointer flex-shrink-0"
                     title="Delete conversation"
+                    aria-label={`Delete conversation: ${conv.title || "New Conversation"}`}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </motion.button>

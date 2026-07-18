@@ -2,13 +2,14 @@
  * Noryx Backend Server
  *
  * A production-quality conversational AI application using local Ollama models.
- * 
+ *
  * Architecture:
  * - server/ai/       : AI logic (models, prompts, parsing)
  * - server/routes/   : API endpoint handlers
  * - server/utils/    : Shared utilities (logging, retry, errors)
+ * - server/security/ : Centralised security services (Phase 7.4)
  * - server.ts        : Express app configuration (this file)
- * 
+ *
  * Key Features:
  * ✓ Native Ollama API integration
  * ✓ Streaming responses (Server-Sent Events)
@@ -18,7 +19,8 @@
  * ✓ Structured logging
  * ✓ Local troubleshooting error messages
  * ✓ Modular provider architecture for future extensibility
- * 
+ * ✓ Centralised security hardening (Phase 7.4)
+ *
  * To get started:
  * 1. Install Ollama: https://ollama.ai
  * 2. Download a model: ollama pull llama3.1:8b
@@ -33,6 +35,9 @@ import { createServer as createViteServer } from "vite";
 // Configuration
 import { getConfig } from "./server/config/env";
 import { getAIProvider } from "./server/ai/provider";
+
+// Security (Phase 7.4)
+import { getSecretAuditService, SecurityConfig } from "./server/security";
 
 // Utilities
 import { createLogger } from "./server/utils/logger";
@@ -63,7 +68,23 @@ const app = express();
 
 // ── Middleware ──────────────────────────────────────────────────────
 
-app.use(express.json({ limit: "10mb" }));
+// Request size limit (API security — Part 5). 10mb default, overridable.
+const JSON_BODY_LIMIT = process.env.SEC_JSON_BODY_LIMIT || "10mb";
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
+
+// Global request timeout (API security — Part 5). Prevents hung requests
+// from consuming resources indefinitely.
+const REQUEST_TIMEOUT_MS = parseInt(process.env.SEC_REQUEST_TIMEOUT_MS || "120000", 10);
+app.use((req, res, next) => {
+  res.setTimeout(REQUEST_TIMEOUT_MS, () => {
+    if (!res.headersSent) {
+      res.status(408).json({
+        error: { code: "REQUEST_TIMEOUT", message: "Request timed out." },
+      });
+    }
+  });
+  next();
+});
 
 // ── API Routes ──────────────────────────────────────────────────────
 
@@ -122,6 +143,16 @@ async function start() {
     }
     logger.info("");
 
+    // ── Security: secret & configuration audit (Part 6) ─────────────
+    logger.info("Auditing secrets & configuration...");
+    const secretAudit = getSecretAuditService().audit();
+    if (!secretAudit.ok) {
+      logger.warn(`  ✗ Secret audit: missing ${secretAudit.missing.join(", ")}`);
+    } else {
+      logger.info("  ✓ Secret audit passed");
+    }
+    logger.info("");
+
     // ── Dependencies ────────────────────────────────────────────────
     logger.info("Checking dependencies...");
 
@@ -168,7 +199,7 @@ async function start() {
       if (!isAvailable) {
         await ragService.retrieveContext("startup check");
       }
-      
+
       // Verify ChromaDB is actually available after the check
       if (await ragService.isAvailable()) {
         logger.info("  ✓ ChromaDB");
@@ -181,7 +212,7 @@ async function start() {
     await checkDependency("RAG Collection", async () => {
       const { ragService } = await import("./server/ai/rag/service");
       const context = await ragService.retrieveContext("startup check");
-      
+
       // Only report success if ChromaDB is actually available
       if (await ragService.isAvailable()) {
         if (context && context.chunkCount > 0) {

@@ -541,9 +541,9 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
           )}
 
           {speechError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl flex items-center justify-between">
+            <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl flex items-center justify-between" role="alert">
               <span className="text-sm">{speechError}</span>
-              <button onClick={onClearSpeechError} className="text-red-700 hover:text-red-800 font-bold text-lg leading-none">×</button>
+              <button onClick={onClearSpeechError} aria-label="Dismiss error" className="text-red-700 hover:text-red-800 font-bold text-lg leading-none px-2 py-1 rounded-lg hover:bg-red-100 cursor-pointer">×</button>
             </div>
           )}
 
@@ -555,7 +555,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
       <AIMonitorPanel data={aiMonitorData ?? null} />
 
       {/* Message input - Fixed at bottom */}
-      <div className="border-t border-gray-200 bg-white px-4 md:px-6 py-4 flex-shrink-0">
+      <div className="border-t border-gray-200 bg-white px-4 md:px-6 py-4 flex-shrink-0 safe-bottom">
         <div className="max-w-3xl mx-auto w-full">
           <AnimatePresence>
             {handsFreeMode && (
@@ -590,7 +590,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handlePaperclipClick}
-              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 border cursor-pointer flex-shrink-0 bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600 button-press"
+              className="w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 border cursor-pointer flex-shrink-0 bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600 button-press touch-target"
               title="Attach document"
               aria-label="Attach document"
             >
@@ -603,7 +603,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={isListening ? onStopVoiceCapture : onStartVoiceCapture}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 border cursor-pointer flex-shrink-0 button-press ${
+              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 border cursor-pointer flex-shrink-0 button-press touch-target ${
                 isListening 
                   ? "bg-red-600 text-white border-red-600 shadow-sm hover:bg-red-700" 
                   : "bg-white border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-600"
@@ -641,7 +641,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 whileTap={{ scale: 0.9 }}
                 onClick={handleSend} 
                 disabled={loading || !inputText.trim()}
-                className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer button-press ${
+                className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 cursor-pointer button-press touch-target ${
                   inputText.trim() && !loading 
                     ? "bg-red-600 text-white hover:bg-red-700 shadow-sm" 
                     : "bg-gray-100 text-gray-400 cursor-not-allowed"
@@ -649,7 +649,7 @@ export const ChatViewport: React.FC<ChatViewportProps> = ({
                 aria-label="Send message"
                 type="button"
               >
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-5 h-5" />
               </motion.button>
             </div>
           </div>

@@ -107,6 +107,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                     : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300"
                 }`}
                 title={speakingMessageId === msg.id ? "Stop speaking" : "Read aloud"}
+                aria-label={speakingMessageId === msg.id ? "Stop speaking" : "Read aloud"}
               >
                 {speakingMessageId === msg.id ? (
                   <><Square className="w-3.5 h-3.5" /><span>Stop</span></>
@@ -120,6 +121,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
                 onClick={() => onCopy(msg.content, msg.id)}
                 className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 cursor-pointer transition-all duration-200 text-xs font-medium flex items-center gap-1.5 bg-white button-press"
                 title="Copy text"
+                aria-label="Copy text"
               >
                 {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-red-600" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedId === msg.id ? "Copied" : "Copy"}</span>

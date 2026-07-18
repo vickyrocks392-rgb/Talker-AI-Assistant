@@ -4,13 +4,14 @@
  * Phase 5: Refactored to use the Context Builder subsystem.
  * Phase 6: Integrated with the Intelligent Orchestration Layer.
  * Phase 7: Attachment-aware RAG retrieval for attached documents.
+ * Phase 7.4: Security telemetry integration (Part 8).
  *
  * The Orchestrator now sits between the request and the Context Builder,
  * producing an ExecutionPlan that tells the Context Builder which context
  * sources to activate and which to skip.
  *
  * Flow:
- *   1. Receive request (with optional attachments)
+ *   1. Receive request (with optional attachments + security telemetry)
  *   2. Call Orchestrator → ExecutionPlan
  *   3. Call Context Builder with ExecutionPlan and attachments
  *   4. Call Provider
@@ -33,6 +34,7 @@ import type { Persona, ConversationMessage } from "../types";
 import type { ChatAttachment } from "../../../shared/types";
 import type { AIMonitorCollector } from "../monitor/service";
 import type { ExecutionMode } from "../orchestrator/types";
+import type { SecurityTelemetry } from "../../security";
 
 const logger = createLogger("ConversationService");
 
@@ -46,6 +48,8 @@ export interface ConversationServiceRequest {
   attachments?: ChatAttachment[];
   /** True when the user's text was produced by voice input (speech recognition). */
   isVoice?: boolean;
+  /** Security telemetry collected by the route (Phase 7.4, Part 8). */
+  security?: SecurityTelemetry;
 }
 
 export interface ConversationServiceResult {
@@ -69,7 +73,7 @@ const contextBuilder = new ContextBuilder();
  * Resolves attachments to use for the request.
  * If request has attachments, uses those and updates conversation active documents.
  * If no attachments but conversation has active documents, falls back to those.
- * 
+ *
  * @param request - The conversation service request
  * @returns The resolved attachments to use (or undefined if none)
  */
@@ -180,14 +184,6 @@ function mapExecutionModeToConversationMode(
 
 /**
  * Handle a non-streaming chat request.
- *
- * Orchestration flow:
- *   1. Call Orchestrator to produce an execution plan
- *   2. Call Context Builder with the execution plan
- *   3. Call AI provider
- *   4. Parse the response
- *   5. Persist to memory
- *   6. Return the response
  */
 export async function handleNonStreaming(
   request: ConversationServiceRequest,
@@ -239,7 +235,7 @@ export async function handleNonStreaming(
 
   // Step 3: Call AI provider
   const provider = getAIProvider();
-  
+
   const response = await provider.chat({ messages });
   const parsed = parseChatResponse(response.message.content);
 
@@ -280,8 +276,6 @@ export async function handleNonStreaming(
   }
 
   // Step 6: Persist Q&A pair to global memory for site-wide reuse
-  // This makes the answer available across all conversations for the same user.
-  // Only persist meaningful Q&A pairs (non-empty, non-trivial responses).
   if (parsed.replyText && parsed.replyText.trim().length > 10) {
     try {
       memoryService.saveGlobalMemory(text, parsed.replyText);
@@ -329,6 +323,19 @@ export async function handleNonStreaming(
     });
   }
 
+  // Record security telemetry (Phase 7.4, Part 8)
+  if (request.security) {
+    const s = request.security;
+    monitor.recordSecurity({
+      triggered: s.triggered,
+      inputDecision: s.inputDecision,
+      outputDecision: s.outputDecision,
+      promptInjectionAttempts: s.promptInjectionAttempts,
+      rejectedFiles: s.rejectedFiles,
+      rateLimited: s.rateLimited,
+    });
+  }
+
   // End the monitor (captures latency)
   monitor.end();
   const monitorData = monitor.getData();
@@ -350,6 +357,14 @@ export async function handleNonStreaming(
     tools: monitorData.tools ? {
       executionCount: monitorData.tools.executionCount,
       toolNames: monitorData.tools.toolNames,
+    } : undefined,
+    security: monitorData.security ? {
+      triggered: monitorData.security.triggered,
+      inputDecision: monitorData.security.inputDecision,
+      outputDecision: monitorData.security.outputDecision,
+      promptInjectionAttempts: monitorData.security.promptInjectionAttempts,
+      rejectedFiles: monitorData.security.rejectedFiles,
+      rateLimited: monitorData.security.rateLimited,
     } : undefined,
   };
 
@@ -374,14 +389,6 @@ export async function handleNonStreaming(
 
 /**
  * Handle a streaming chat request.
- *
- * Orchestration flow:
- *   1. Call Orchestrator to produce an execution plan
- *   2. Call Context Builder with the execution plan (before streaming)
- *   3. Call AI provider with streaming
- *   4. Parse tokens as they arrive
- *   5. Persist to memory on completion
- *   6. Signal completion via callbacks
  */
 export async function handleStreaming(
   request: ConversationServiceRequest,
@@ -548,6 +555,19 @@ export async function handleStreaming(
           });
         }
 
+        // Record security telemetry (Phase 7.4, Part 8)
+        if (request.security) {
+          const s = request.security;
+          monitor.recordSecurity({
+            triggered: s.triggered,
+            inputDecision: s.inputDecision,
+            outputDecision: s.outputDecision,
+            promptInjectionAttempts: s.promptInjectionAttempts,
+            rejectedFiles: s.rejectedFiles,
+            rateLimited: s.rateLimited,
+          });
+        }
+
         // End the monitor (captures latency)
         monitor.end();
         const monitorData = monitor.getData();
@@ -569,6 +589,14 @@ export async function handleStreaming(
           tools: monitorData.tools ? {
             executionCount: monitorData.tools.executionCount,
             toolNames: monitorData.tools.toolNames,
+          } : undefined,
+          security: monitorData.security ? {
+            triggered: monitorData.security.triggered,
+            inputDecision: monitorData.security.inputDecision,
+            outputDecision: monitorData.security.outputDecision,
+            promptInjectionAttempts: monitorData.security.promptInjectionAttempts,
+            rejectedFiles: monitorData.security.rejectedFiles,
+            rateLimited: monitorData.security.rateLimited,
           } : undefined,
         };
 

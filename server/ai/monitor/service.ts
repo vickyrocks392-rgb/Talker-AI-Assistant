@@ -6,14 +6,10 @@
  * RAG retrieval, tool executor, provider wrapper) calls methods on
  * this collector to append metadata.
  *
- * Usage:
- *   const monitor = createAIMonitor("groq", "llama-3.3-70b-versatile");
- *   monitor.setMode("memory+rag");
- *   monitor.recordMemory({ entryCount: 2, avgConfidence: 0.74 });
- *   monitor.recordRag({ activeDocCount: 3, chunkCount: 8 });
- *   monitor.recordTool({ executionCount: 1, toolNames: ["calculator"] });
- *   monitor.end();
- *   const data = monitor.getData();
+ * Phase 7.4 (Part 8): the monitor now also records Security telemetry
+ * (input filter, output filter, blocked requests, rejected files, prompt
+ * injection attempts, rate-limited requests) without ever storing sensitive
+ * user data.
  *
  * No global state, no singleton state, no static variables.
  * Metadata is request-scoped only.
@@ -26,6 +22,7 @@ import type {
   RagMetadata,
   ToolMetadata,
   ProviderMetadata,
+  SecurityMetadata,
 } from "./types";
 
 /**
@@ -41,6 +38,8 @@ export interface AIMonitorCollector {
   recordRag(meta: RagMetadata): void;
   /** Record tool execution metadata. */
   recordTool(meta: ToolMetadata): void;
+  /** Record security telemetry (Phase 7.4, Part 8). */
+  recordSecurity(meta: SecurityMetadata): void;
   /** Mark the request as ended (captures end timestamp). */
   end(): void;
   /** Get the finalised monitor data. */
@@ -69,6 +68,7 @@ export function createAIMonitor(
   let memory: MemoryMetadata | undefined;
   let rag: RagMetadata | undefined;
   let tools: ToolMetadata | undefined;
+  let security: SecurityMetadata | undefined;
   let ended = false;
   let endTime = 0;
 
@@ -87,6 +87,10 @@ export function createAIMonitor(
 
     recordTool(meta: ToolMetadata): void {
       tools = meta;
+    },
+
+    recordSecurity(meta: SecurityMetadata): void {
+      security = meta;
     },
 
     end(): void {
@@ -110,6 +114,7 @@ export function createAIMonitor(
         memory: memory && memory.entryCount > 0 ? memory : undefined,
         rag: rag && rag.chunkCount > 0 ? rag : undefined,
         tools: tools && tools.executionCount > 0 ? tools : undefined,
+        security,
       };
     },
   };

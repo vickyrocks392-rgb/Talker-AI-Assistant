@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { VOICE_PERSONALITIES } from "../lib/voice-utils";
 import { User as FirebaseUser } from "firebase/auth";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 
 interface VoiceSettingsProps {
   onClose: () => void;
@@ -103,6 +104,9 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
   const [testListening, setTestListening] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "fail" | "idle">("idle");
   const [testHeardText, setTestHeardText] = useState("");
+
+  // Accessibility: Escape to close, focus trap, focus restore
+  const dialogRef = useDialogA11y<HTMLDivElement>(true, onClose);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,11 +208,15 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
   return (
     <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <motion.div 
+        ref={dialogRef}
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
         transition={{ duration: 0.22, ease: "easeOut" }}
-        className="w-full max-w-2xl bg-white border border-gray-200 rounded-2xl p-6 flex flex-col max-h-[90vh] shadow-xl font-sans overflow-y-auto relative text-gray-900"
+        className="w-full max-w-2xl bg-white border border-gray-200 rounded-2xl p-6 flex flex-col max-h-[90vh] shadow-xl font-sans overflow-y-auto relative text-gray-900 safe-top safe-bottom"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
       >
       {/* Settings Header */}
       <div className="flex items-center justify-between border-b border-gray-200 pb-4 mb-5 flex-shrink-0">
@@ -484,6 +492,9 @@ export const VoiceSettings: React.FC<VoiceSettingsProps> = ({
                 </div>
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={localSecurityEnabled}
+                  aria-label="Enable Lock Screen"
                   onClick={() => setLocalSecurityEnabled(!localSecurityEnabled)}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
                     localSecurityEnabled ? "bg-red-600" : "bg-gray-300"

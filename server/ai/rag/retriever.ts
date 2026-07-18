@@ -74,17 +74,8 @@ export class RagRetriever implements Retriever {
    * @param documentIds - Optional array of document IDs to scope retrieval to.
    * @returns Array of search results, ordered by relevance (highest score first).
    */
-   async retrieve(query: string, documentIds?: string[]): Promise<SearchResult[]> {
-     // ── DEBUG: Retriever entry point ───────────────────────────────────────
-     logger.info("=== Retriever Debug ===");
-     if (documentIds && documentIds.length > 0) {
-       logger.info("single-document mode or multi-document mode: " + (documentIds.length === 1 ? "single-document" : "multi-document"));
-     } else {
-       logger.info("single-document mode or multi-document mode: none (unfiltered)");
-     }
-     // ── END DEBUG ───────────────────────────────────────────────────────────
-
-     logger.debug(`Retrieving for query: "${query.slice(0, 80)}..."`);
+    async retrieve(query: string, documentIds?: string[]): Promise<SearchResult[]> {
+      logger.debug(`Retrieving for query: "${query.slice(0, 80)}..."`);
 
      // Log the exact attachment array
      if (documentIds && documentIds.length > 0) {
@@ -205,10 +196,6 @@ export class RagRetriever implements Retriever {
 
      // Limit to k results (or k * numDocs for multiple documents)
      const topK = sorted.slice(0, limit);
-
-     // ── DEBUG: Retriever results returned ───────────────────────────────────
-     logger.info("results returned: " + topK.length);
-     // ── END DEBUG ───────────────────────────────────────────────────────────
 
      logger.debug(
        `Retrieved ${results.length} results, ${topK.length} passed threshold ${this.config.scoreThreshold}`,

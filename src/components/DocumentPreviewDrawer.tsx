@@ -13,6 +13,7 @@ import {
   Clock,
 } from "lucide-react";
 import type { RagDocument } from "./KnowledgeCenter";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 
 interface DocumentPreviewDrawerProps {
   document: RagDocument | null;
@@ -28,6 +29,9 @@ export const DocumentPreviewDrawer: React.FC<DocumentPreviewDrawerProps> = ({
   const [loading, setLoading] = useState(false);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Accessibility: Escape to close, focus trap, focus restore
+  const dialogRef = useDialogA11y<HTMLDivElement>(isOpen, onClose);
 
   // Fetch document text when drawer opens
   useEffect(() => {
@@ -74,11 +78,15 @@ export const DocumentPreviewDrawer: React.FC<DocumentPreviewDrawerProps> = ({
 
           {/* Drawer */}
           <motion.div
+            ref={dialogRef}
             initial={{ x: "100%", opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: "100%", opacity: 0 }}
             transition={{ type: "spring", damping: 25, stiffness: 220 }}
-            className="fixed top-0 right-0 bottom-0 w-full max-w-xl bg-white shadow-2xl z-50 flex flex-col"
+            className="fixed top-0 right-0 bottom-0 w-full max-w-xl bg-white shadow-2xl z-50 flex flex-col safe-top safe-bottom"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Document Preview"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -93,7 +101,8 @@ export const DocumentPreviewDrawer: React.FC<DocumentPreviewDrawerProps> = ({
               </div>
               <button
                 onClick={onClose}
-                className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition"
+                aria-label="Close document preview"
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-800 transition"
               >
                 <X className="w-5 h-5" />
               </button>
