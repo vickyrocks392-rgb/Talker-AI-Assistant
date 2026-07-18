@@ -181,43 +181,51 @@ User Message → Security Pipeline → ConversationService → Orchestrator (rul
 
 ## 📸 Screenshots
 
-### Chat Interface
+### Home Dashboard
 
-![Chat Interface](screenshots/python-code.png)
+![Home Dashboard](docs/images/portfolio/home-dashboard.png)
 
-*Multi‑provider AI chat with streaming responses, markdown rendering, and syntax‑highlighted code blocks.*
-
----
-
-### Document Intelligence (RAG)
-
-![Document RAG](screenshots/essay-generation.png)
-
-*Upload PDFs and text files — Noryx indexes and retrieves semantically relevant content for context‑aware answers.*
+*Full application layout with active conversation, workspace sidebar, and AI Monitor panel — the central hub of the Noryx AI Workspace.*
 
 ---
 
-### Markdown Rendering
+### AI Monitor & Workspace Intelligence
 
-![Markdown Table](screenshots/markdown-table.png)
+![AI Monitor](docs/images/portfolio/ai-monitor.png)
 
-*Rich markdown rendering with tables, code blocks, and formatted output.*
-
----
-
-### AI Reasoning
-
-![AI Reasoning](screenshots/recursion-example.png)
-
-*Complex reasoning and explanations powered by the deterministic orchestrator and multi‑provider AI.*
+*Per‑request telemetry showing provider, latency, mode (memory/RAG/tools/security), and response metadata — full observability into every AI interaction.*
 
 ---
 
-### Translation & Multilingual
+### Knowledge Center
 
-![Translation](screenshots/translation.png)
+![Knowledge Center](docs/images/portfolio/knowledge-center.png)
 
-*Multilingual support with translation capabilities across all connected providers.*
+*Centralised document management with upload, preview, and deletion — index PDFs and text files for semantic retrieval.*
+
+---
+
+### Document RAG Workflow
+
+![Document RAG](docs/images/portfolio/document-rag.png)
+
+*Upload PDFs and text files — Noryx indexes and retrieves semantically relevant content for context‑aware, attachment‑scoped answers.*
+
+---
+
+### Voice Authentication
+
+![Voice Authentication](docs/images/portfolio/voice-authentication.png)
+
+*Speech‑to‑text input and text‑to‑speech output via Web Speech API, with voice configuration settings.*
+
+---
+
+### Security PIN Authentication
+
+![Security PIN](docs/images/portfolio/security-pin.png)
+
+*Privacy lock screen with PIN authentication — securing the workspace when unattended.*
 
 ---
 
