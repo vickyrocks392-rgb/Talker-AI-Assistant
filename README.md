@@ -25,27 +25,28 @@
     <img src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js"/>
     <img src="https://img.shields.io/badge/Ollama-000000?style=flat-square&logo=ollama&logoColor=white" alt="Ollama"/>
     <img src="https://img.shields.io/badge/Groq-00E676?style=flat-square&logo=groq&logoColor=black" alt="Groq"/>
+    <img src="https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini"/>
     <img src="https://img.shields.io/badge/ChromaDB-FF6B6B?style=flat-square&logo=chromadb&logoColor=white" alt="ChromaDB"/>
     <img src="https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite"/>
+    <img src="https://img.shields.io/badge/Firebase-FFCA28?style=flat-square&logo=firebase&logoColor=black" alt="Firebase"/>
   </p>
 </div>
+
 ---
 
 ## 📋 Project Overview
 
 **Noryx** is not a chatbot. It is a **full‑stack AI Workspace** — a production‑ready platform where users converse, query documents, persist knowledge, and orchestrate AI models through a unified, secure interface.
 
-### What makes Noryx an AI Workspace?
-
 | Concept | What it means |
 |---------|---------------|
-| **🧠 AI Workspace** | A unified environment where users interact with AI across conversations, documents, memory, and tools — not a single‑purpose chat window. |
+| **🧠 AI Workspace** | A unified environment for conversations, documents, memory, and tools — not a single‑purpose chat window. |
 | **🔀 Multi‑provider architecture** | Seamless orchestration across **Ollama** (local), **Groq** (cloud), and **Gemini** (cloud) with automatic failover. No single‑provider lock‑in. |
-| **📄 Document intelligence** | Upload PDFs and text files. Noryx indexes them into **ChromaDB** and retrieves semantically relevant content — attachment‑scoped RAG that never leaks across documents. |
-| **🧩 Persistent memory** | Conversation history + global (site‑wide) Q&A memory stored in **SQLite**. The system remembers across sessions without external vector databases. |
-| **💡 Workspace intelligence** | A sidebar that surfaces conversation summaries, active document context, and memory‑driven insights — turning raw chat history into actionable knowledge. |
-| **📊 AI Monitor** | Per‑request telemetry showing provider used, latency, mode (memory/RAG/tools/security), and response metadata — full observability into every AI interaction. |
-| **🔒 Security** | Centralised security pipeline: input sanitisation, content filtering, prompt‑injection detection, file validation, rate limiting, secret auditing, and telemetry — every request is hardened. |
+| **📄 Document intelligence** | Upload PDFs and text files. Indexed into **ChromaDB** with attachment‑scoped RAG that never leaks across documents. |
+| **🧩 Persistent memory** | Conversation history + global Q&A memory stored in **SQLite**. Remembers across sessions without external vector databases. |
+| **💡 Workspace intelligence** | Sidebar surfacing conversation summaries, active document context, and memory‑driven insights — turning chat history into actionable knowledge. |
+| **📊 AI Monitor** | Per‑request telemetry: provider, latency, mode (memory/RAG/tools/security), and response metadata — full observability into every AI interaction. |
+| **🔒 Security** | Centralised pipeline: input sanitisation, content filtering, prompt‑injection detection, file validation, rate limiting, secret auditing, and telemetry. Every request is hardened. |
 
 ---
 
@@ -66,8 +67,8 @@
 | Feature | Description |
 |---------|-------------|
 | **Retrieval‑Augmented Generation (RAG)** | Semantic search over uploaded documents using ChromaDB + embeddings. |
-| **Attachment‑scoped retrieval** | RAG context is scoped to the active document — no cross‑document leakage. |
-| **PDF & text ingestion** | Upload PDFs or plain text files; automatic chunking, embedding, and indexing. |
+| **Attachment‑scoped retrieval** | RAG context scoped to the active document — no cross‑document leakage. |
+| **PDF & text ingestion** | Upload PDFs or plain text; automatic chunking, embedding, and indexing. |
 | **Global memory** | Site‑wide Q&A memory persists across all conversations. |
 | **Conversation memory** | Per‑conversation history with automatic title generation. |
 
@@ -222,65 +223,14 @@ User Message → Security Pipeline → ConversationService → Orchestrator (rul
 
 ## 🛠️ Technology Stack
 
-### Frontend
-
-| Technology | Purpose |
-|------------|---------|
-| **React 19** | UI framework with concurrent features |
-| **TypeScript** | End‑to‑end type safety |
-| **Vite** | Build tool and dev server with HMR |
-| **Tailwind CSS 4** | Utility‑first styling |
-| **Leaflet** | Interactive map rendering |
-| **Web Speech API** | Voice input / output |
-
-### Backend
-
-| Technology | Purpose |
-|------------|---------|
-| **Express.js** | HTTP server and routing |
-| **Node.js** | JavaScript runtime |
-| **TypeScript** | Type safety across the stack |
-| **Better‑SQLite3** | Synchronous SQLite driver |
-| **LangChain** | Embedding generation and vector store integration |
-
-### AI
-
-| Technology | Purpose |
-|------------|---------|
-| **Ollama** | Local LLM inference (Llama 3.2) |
-| **Groq** | Cloud LLM inference with low latency |
-| **Gemini** | Google's LLM for failover |
-| **ChromaDB** | Vector database for document embeddings |
-| **Custom orchestrator** | Deterministic rule‑engine for routing decisions |
-| **Context builder** | Prompt assembly with token budget management |
-
-### Storage
-
-| Technology | Purpose |
-|------------|---------|
-| **SQLite** | Conversations, messages, global memory, metadata |
-| **ChromaDB** | Document embedding vectors and semantic search |
-| **Firebase Firestore** | User profile and authentication sync |
-
-### Security
-
-| Technology | Purpose |
-|------------|---------|
-| **InputSecurityService** | Input sanitisation and validation |
-| **ContentFilterService** | Input + output content filtering |
-| **PromptInjectionDetector** | RAG and chat injection detection |
-| **FileValidationService** | Document upload validation |
-| **RateLimiter** | Per‑client request throttling |
-| **SecretAuditService** | Startup configuration audit |
-| **SecurityTelemetry** | Request‑scoped security events |
-
-### Infrastructure
-
-| Technology | Purpose |
-|------------|---------|
-| **Render** | Production hosting |
-| **Firebase** | Authentication and cloud sync |
-| **OpenStreetMap** | Location services (Nominatim + OSRM) |
+| Layer | Technologies |
+|-------|-------------|
+| **Frontend** | React 19, TypeScript, Vite, Tailwind CSS 4, Leaflet, Web Speech API |
+| **Backend** | Express.js, Node.js, TypeScript, Better‑SQLite3, LangChain |
+| **AI** | Ollama (local), Groq (cloud), Gemini (failover), ChromaDB, Custom orchestrator, Context builder |
+| **Storage** | SQLite (messages, memory, metadata), ChromaDB (embeddings), Firebase Firestore (auth sync) |
+| **Security** | InputSecurityService, ContentFilterService, PromptInjectionDetector, FileValidationService, RateLimiter, SecretAuditService, SecurityTelemetry |
+| **Infrastructure** | Render (hosting), Firebase (auth + sync), OpenStreetMap (location services) |
 
 ---
 
@@ -478,29 +428,14 @@ Noryx was built to answer a fundamental question: *What does a production‑read
 
 Noryx is architected to evolve from a single‑user AI workspace into a distributed intelligence platform. The following pillars guide its long‑term evolution:
 
-### 🏢 Multi‑Tenant Intelligence
-
-The security and memory layers are already designed with tenant isolation in mind. Future iterations will introduce team workspaces, role‑based access control, and shared knowledge bases — enabling organisations to deploy Noryx as their internal AI hub.
-
-### 🔗 Agentic Workflows
-
-The deterministic orchestrator provides a foundation for multi‑step reasoning chains. Planned capabilities include autonomous agents that can plan, execute sub‑tasks, verify results, and iterate — all within the existing security and observability framework.
-
-### 🧬 Hybrid Retrieval
-
-Current RAG uses dense embeddings via ChromaDB. The next generation will combine dense + sparse (BM25) retrieval with re‑ranking, enabling higher precision on domain‑specific queries while maintaining recall on open‑ended questions.
-
-### 🛡️ Enterprise Readiness
-
-The security pipeline is built for extensibility. Future additions include SSO/SAML authentication, SOC 2‑compliant audit logging, on‑premise deployment via Docker Compose, and compliance reporting — making Noryx suitable for regulated industries.
-
-### 🧪 Code Execution Sandbox
-
-A planned secure sandbox will allow Noryx to write, execute, and verify code in isolated environments — transforming it from a conversational AI into an interactive development assistant.
-
-### 🎙️ Multimodal Interaction
-
-Voice is already supported. The roadmap includes image understanding, document vision (OCR + layout analysis), and eventually real‑time audio streaming — making Noryx a truly multimodal workspace.
+| Pillar | Description |
+|--------|-------------|
+| **🏢 Multi‑Tenant Intelligence** | Team workspaces, role‑based access control, and shared knowledge bases — enabling organisations to deploy Noryx as their internal AI hub. |
+| **🔗 Agentic Workflows** | Autonomous agents that can plan, execute sub‑tasks, verify results, and iterate — within the existing security and observability framework. |
+| **🧬 Hybrid Retrieval** | Dense + sparse (BM25) retrieval with re‑ranking for higher precision on domain‑specific queries while maintaining recall on open‑ended questions. |
+| **🛡️ Enterprise Readiness** | SSO/SAML authentication, SOC 2‑compliant audit logging, on‑premise deployment via Docker Compose, and compliance reporting. |
+| **🧪 Code Execution Sandbox** | A secure sandbox for Noryx to write, execute, and verify code in isolated environments — transforming it from conversational AI into an interactive development assistant. |
+| **🎙️ Multimodal Interaction** | Image understanding, document vision (OCR + layout analysis), and real‑time audio streaming — building on existing voice support. |
 
 ---
 
@@ -524,16 +459,16 @@ Noryx stands on the shoulders of incredible open‑source projects and communiti
 
 <p align="center">
   <b>Built with ❤️ for AI engineers who demand production‑grade quality.</b>
-  <br>
+  <br><br>
   <a href="https://talker-ai-assistant.onrender.com">🌐 Live Demo</a>
-  ·
+  &nbsp;·&nbsp;
   <a href="docs/README.md">📚 Documentation</a>
-  ·
+  &nbsp;·&nbsp;
   <a href="https://github.com/vickyrocks392-rgb/Talker-AI-Assistant/issues">🐛 Report Bug</a>
-  ·
+  &nbsp;·&nbsp;
   <a href="https://github.com/vickyrocks392-rgb/Talker-AI-Assistant/discussions">💬 Discussion</a>
 </p>
 
 <p align="center">
-  <sub>MIT License · Copyright © 2025 Noryx</sub>
+  <sub>MIT License · Copyright © 2026 Noryx</sub>
 </p>
