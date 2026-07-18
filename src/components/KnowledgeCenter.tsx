@@ -17,6 +17,7 @@ import {
 import { useDocumentManager } from "../hooks/useDocumentManager";
 import { DocumentPreviewDrawer } from "./DocumentPreviewDrawer";
 import { DocumentInsightsModal } from "./DocumentInsightsModal";
+import { ProductionRagNotice } from "./ProductionRagNotice";
 
 // Simple logger for frontend
 const logger = {
@@ -77,6 +78,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
   const [showPreview, setShowPreview] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [ragAvailable, setRagAvailable] = useState<boolean | null>(null);
 
   // Fetch documents and stats on mount
   useEffect(() => {
@@ -101,6 +103,21 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
       let totalChunks = 0;
       let vectorDbStatus: "ready" | "unavailable" = "unavailable";
       let health: "healthy" | "degraded" | "unavailable" | "indexing" = "unavailable";
+      let ragAvailableStatus: boolean | null = null;
+
+      if (healthResponse && healthResponse.ok) {
+        const healthData = await healthResponse.json();
+        // Use the new rag.available field
+        if (healthData.rag && typeof healthData.rag.available === "boolean") {
+          ragAvailableStatus = healthData.rag.available;
+        } else {
+          // Fallback to old format for backward compatibility
+          const ollamaOk = healthData.ollama === true;
+          const chromaOk = healthData.chromadb === true;
+          const ragReady = healthData.ragReady === true;
+          ragAvailableStatus = ollamaOk && chromaOk && ragReady;
+        }
+      }
 
       if (statsResponse && statsResponse.ok) {
         const statsData = await statsResponse.json();
@@ -109,21 +126,14 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
         vectorDbStatus = statsData.vectorDbStatus === "ready" ? "ready" : "unavailable";
       }
 
-      if (healthResponse && healthResponse.ok) {
-        const healthData = await healthResponse.json();
-        const ollamaOk = healthData.ollama === true;
-        const chromaOk = healthData.chromadb === true;
-        const ragReady = healthData.ragReady === true;
-
-        if (ollamaOk && chromaOk && ragReady) {
-          health = "healthy";
-        } else if (ollamaOk || chromaOk) {
-          health = "degraded";
-        } else {
-          health = "unavailable";
-        }
+      // Set health based on RAG availability
+      if (ragAvailableStatus === true) {
+        health = "healthy";
+      } else if (ragAvailableStatus === false) {
+        health = "unavailable";
       }
 
+      setRagAvailable(ragAvailableStatus);
       setStats({
         totalDocuments,
         totalChunks,
@@ -133,6 +143,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
       });
     } catch (err) {
       logger.error("Failed to fetch stats", err);
+      setRagAvailable(false);
       setStats({
         totalDocuments: 0,
         totalChunks: 0,
@@ -230,6 +241,9 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
         </motion.button>
       </div>
 
+      {/* Production RAG Notice - Shown when RAG is unavailable */}
+      <ProductionRagNotice visible={ragAvailable === false} />
+
       {/* Error Banner */}
       <AnimatePresence>
         {error && (
@@ -254,7 +268,7 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
 
       {/* Content - Independently scrollable */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Upload Area */}
+        {/* Upload Area - Disabled when RAG unavailable */}
         <div className="p-4 border-b border-gray-200">
           <motion.label
             onDragOver={handleDragOver}
@@ -262,9 +276,11 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
             onDrop={handleDrop}
             whileHover={{ scale: 1.01 }}
             className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200 flex flex-col items-center gap-3 ${
-              dragOver 
-                ? "border-red-400 bg-red-50" 
-                : "border-gray-300 hover:border-red-300 hover:bg-gray-50"
+              ragAvailable === false
+                ? "border-gray-200 bg-gray-50 cursor-not-allowed"
+                : dragOver 
+                  ? "border-red-400 bg-red-50" 
+                  : "border-gray-300 hover:border-red-300 hover:bg-gray-50"
             }`}
           >
             <input
@@ -272,17 +288,27 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
               accept=".pdf,.txt,.md,.docx,.csv"
               onChange={handleFileSelect}
               className="hidden"
-              disabled={isUploading}
+              disabled={isUploading || ragAvailable === false}
             />
-            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-              <Upload className="w-6 h-6 text-red-600" />
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+              ragAvailable === false ? "bg-gray-200" : "bg-red-100"
+            }`}>
+              <Upload className={`w-6 h-6 ${ragAvailable === false ? "text-gray-400" : "text-red-600"}`} />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-900 mb-1">
-                Drop file here or click to upload
+              <p className={`text-sm font-medium mb-1 ${
+                ragAvailable === false ? "text-gray-500" : "text-gray-900"
+              }`}>
+                {ragAvailable === false 
+                  ? "Document upload unavailable" 
+                  : "Drop file here or click to upload"
+                }
               </p>
               <p className="text-xs text-gray-500">
-                PDF, TXT, MD, DOCX, CSV up to 10MB
+                {ragAvailable === false 
+                  ? "RAG subsystem is not available in this deployment"
+                  : "PDF, TXT, MD, DOCX, CSV up to 10MB"
+                }
               </p>
             </div>
           </motion.label>
@@ -371,8 +397,8 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
           </div>
         </div>
 
-        {/* Current Document Card */}
-        {activeDocument && (
+        {/* Current Document Card - Hidden when RAG unavailable */}
+        {activeDocument && ragAvailable !== false && (
           <div className="p-4 border-b border-gray-200">
             <motion.div
               initial={{ opacity: 0, y: 8 }}
@@ -421,98 +447,100 @@ export const KnowledgeCenter: React.FC<KnowledgeCenterProps> = ({ onClose }) => 
           </div>
         )}
 
-        {/* Document Library */}
-        <div className="p-4">
-          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-3">
-            Document Library
-          </h3>
-          
-          {documents.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center py-8"
-            >
-              <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
-                <FileText className="w-6 h-6 text-gray-400" />
-              </div>
-              <p className="text-sm text-gray-500 mb-1">No documents uploaded yet</p>
-              <p className="text-xs text-gray-400">Upload a document to enable retrieval.</p>
-            </motion.div>
-          ) : (
-            <div className="space-y-2">
-              {documents.map((doc, idx) => (
-                <motion.div
-                  key={doc.documentId}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.03 }}
-                  className={`bg-white border rounded-xl p-3 card-premium ${
-                    doc.isActive ? 'border-red-300 bg-red-50/30' : 'border-gray-200'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <File className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                        <span className="text-sm font-medium text-gray-900 truncate">
-                          {doc.filename}
+        {/* Document Library - Hidden when RAG unavailable */}
+        {ragAvailable !== false && (
+          <div className="p-4">
+            <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-3">
+              Document Library
+            </h3>
+            
+            {documents.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center py-8"
+              >
+                <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                  <FileText className="w-6 h-6 text-gray-400" />
+                </div>
+                <p className="text-sm text-gray-500 mb-1">No documents uploaded yet</p>
+                <p className="text-xs text-gray-400">Upload a document to enable retrieval.</p>
+              </motion.div>
+            ) : (
+              <div className="space-y-2">
+                {documents.map((doc, idx) => (
+                  <motion.div
+                    key={doc.documentId}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.03 }}
+                    className={`bg-white border rounded-xl p-3 card-premium ${
+                      doc.isActive ? 'border-red-300 bg-red-50/30' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <File className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                          <span className="text-sm font-medium text-gray-900 truncate">
+                            {doc.filename}
+                          </span>
+                          {doc.isActive && (
+                            <span className="text-xs text-red-600 font-medium">Active</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span>{formatTimeAgo(doc.uploadDate)}</span>
+                          <span>•</span>
+                          <span>{doc.pages} pages</span>
+                          <span>•</span>
+                          <span>{formatFileSize(doc.size)}</span>
+                          {doc.chunkCount !== undefined && (
+                            <>
+                              <span>•</span>
+                              <span>{doc.chunkCount} chunks</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                          doc.status === "indexed" ? "bg-green-100 text-green-700" :
+                          doc.status === "indexing" ? "bg-amber-100 text-amber-700" :
+                          doc.status === "failed" ? "bg-red-100 text-red-700" :
+                          "bg-gray-100 text-gray-700"
+                        }`}>
+                          {doc.status}
                         </span>
-                        {doc.isActive && (
-                          <span className="text-xs text-red-600 font-medium">Active</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span>{formatTimeAgo(doc.uploadDate)}</span>
-                        <span>•</span>
-                        <span>{doc.pages} pages</span>
-                        <span>•</span>
-                        <span>{formatFileSize(doc.size)}</span>
-                        {doc.chunkCount !== undefined && (
-                          <>
-                            <span>•</span>
-                            <span>{doc.chunkCount} chunks</span>
-                          </>
-                        )}
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => {
+                            setSelectedDocument(doc);
+                            setShowPreview(true);
+                          }}
+                          className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition button-press"
+                          title="Preview document"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => handleDeleteDocument(doc.documentId)}
+                          className="p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition button-press"
+                          title="Delete document"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </motion.button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                        doc.status === "indexed" ? "bg-green-100 text-green-700" :
-                        doc.status === "indexing" ? "bg-amber-100 text-amber-700" :
-                        doc.status === "failed" ? "bg-red-100 text-red-700" :
-                        "bg-gray-100 text-gray-700"
-                      }`}>
-                        {doc.status}
-                      </span>
-                      <motion.button
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => {
-                          setSelectedDocument(doc);
-                          setShowPreview(true);
-                        }}
-                        className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition button-press"
-                        title="Preview document"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </motion.button>
-                      <motion.button
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => handleDeleteDocument(doc.documentId)}
-                        className="p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition button-press"
-                        title="Delete document"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </motion.button>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Document Preview Drawer */}

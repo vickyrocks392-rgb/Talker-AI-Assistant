@@ -282,6 +282,14 @@ async function checkMemoryService(): Promise<ComponentHealth> {
 }
 
 /**
+ * Check RAG availability using the cached state from probeAvailability.
+ * Returns the availability status and reason.
+ */
+function checkRagAvailability(): { available: boolean; reason: string | null } {
+  return ragService.getAvailabilityStatus();
+}
+
+/**
  * Perform comprehensive health checks on all system dependencies.
  *
  * Each check is independent and failures are logged but do not prevent

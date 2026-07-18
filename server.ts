@@ -192,36 +192,16 @@ async function start() {
       }
     });
 
-    // Check ChromaDB
-    await checkDependency("ChromaDB", async () => {
+    // Probe RAG availability (once, at startup)
+    await checkDependency("RAG", async () => {
       const { ragService } = await import("./server/ai/rag/service");
-      const isAvailable = await ragService.isAvailable();
-      if (!isAvailable) {
-        await ragService.retrieveContext("startup check");
-      }
-
-      // Verify ChromaDB is actually available after the check
-      if (await ragService.isAvailable()) {
-        logger.info("  ✓ ChromaDB");
+      await ragService.probeAvailability();
+      
+      const status = ragService.getAvailabilityStatus();
+      if (status.available) {
+        logger.info("  ✓ RAG subsystem initialized successfully");
       } else {
-        logger.warn("  ✗ ChromaDB (unavailable)");
-      }
-    });
-
-    // Check RAG Collection
-    await checkDependency("RAG Collection", async () => {
-      const { ragService } = await import("./server/ai/rag/service");
-      const context = await ragService.retrieveContext("startup check");
-
-      // Only report success if ChromaDB is actually available
-      if (await ragService.isAvailable()) {
-        if (context && context.chunkCount > 0) {
-          logger.info(`  ✓ RAG Collection (${context.chunkCount} chunks indexed)`);
-        } else {
-          logger.info("  ✓ RAG Collection (empty, ready for documents)");
-        }
-      } else {
-        logger.warn("  ✗ RAG Collection (unavailable)");
+        logger.info("  ✓ RAG subsystem unavailable (running without document retrieval)");
       }
     });
 

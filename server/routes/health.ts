@@ -31,25 +31,37 @@ router.get("/health", (_req, res) => {
 });
 
 /**
- * GET /api/health
- * Comprehensive health check — returns status of all system dependencies.
- */
-router.get("/api/health", async (_req, res, next) => {
-  try {
-    const report = await getHealth();
-    res.json(report);
-  } catch (error) {
-    logger.error("Health check failed", error);
-    res.status(500).json({
-      backend: true,
-      ollama: false,
-      chromadb: false,
-      sqlite: false,
-      ragReady: false,
-      error: "Health check failed",
-    });
-  }
-});
+  * GET /api/health
+  * Comprehensive health check — returns status of all system dependencies.
+  */
+ router.get("/api/health", async (_req, res, next) => {
+   try {
+     const report = await getHealth();
+     // Add RAG status in the required format
+     const { ragService } = await import("../ai/rag/service");
+     const ragStatus = ragService.getAvailabilityStatus();
+     res.json({
+       ...report,
+       rag: {
+         available: ragStatus.available,
+         ...(ragStatus.reason && { reason: ragStatus.reason }),
+       },
+     });
+   } catch (error) {
+     logger.error("Health check failed", error);
+     res.status(500).json({
+       backend: true,
+       ollama: false,
+       chromadb: false,
+       sqlite: false,
+       ragReady: false,
+       rag: {
+         available: false,
+         reason: "Health check failed",
+       },
+     });
+   }
+ });
 
 /**
  * GET /api/system/health

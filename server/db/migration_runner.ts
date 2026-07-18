@@ -16,7 +16,34 @@ import { createLogger } from "../utils/logger";
 
 const logger = createLogger("MigrationRunner");
 
-const MIGRATIONS_DIR = path.join(__dirname, "migrations");
+// Cross-environment compatible migrations directory resolution
+// In development (tsx ESM): use import.meta.url
+// In production (esbuild CJS): use process.cwd() with dist/migrations
+//
+// The key insight: esbuild bundles to CJS format, but the migrations
+// are copied to dist/migrations by scripts/copy-migrations.js.
+// In development, we need to find the source migrations directory.
+//
+// We use a simple heuristic: check if we're running from dist/
+// If so, use dist/migrations. Otherwise, use the source path.
+function getMigrationsDir(): string {
+  // Check if we're in production (running from dist/)
+  // In production, process.cwd() points to the project root
+  // and the bundled code is in dist/
+  const isProduction = process.cwd().includes("dist") || 
+                     !fs.existsSync(path.join(process.cwd(), "server", "db", "migrations"));
+  
+  if (isProduction) {
+    // Production: migrations are copied to dist/migrations
+    return path.join(process.cwd(), "dist", "migrations");
+  }
+  
+  // Development: use the source migrations directory
+  // We can use process.cwd() since tsx runs from the project root
+  return path.join(process.cwd(), "server", "db", "migrations");
+}
+
+const MIGRATIONS_DIR = getMigrationsDir();
 
 /**
  * Ensures the schema_migrations tracking table exists.

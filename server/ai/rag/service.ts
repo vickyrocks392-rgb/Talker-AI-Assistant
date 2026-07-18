@@ -73,13 +73,18 @@ export interface RagContext {
  * Initialises the embedding generator, vector store, and retriever
  * on first use. If initialization fails, the service disables itself
  * and all subsequent retrieval attempts return null.
+ *
+ * ChromaDB is treated as an optional production dependency - the service
+ * gracefully degrades when ChromaDB is unavailable.
  */
 class RagService {
-  private embeddings: RagEmbeddings | null = null;
-  private vectorStore: RagVectorStore | null = null;
-  private retriever: RagRetriever | null = null;
-  private initialized = false;
-  private initError: Error | null = null;
+   private embeddings: RagEmbeddings | null = null;
+   private vectorStore: RagVectorStore | null = null;
+   private retriever: RagRetriever | null = null;
+   private initialized = false;
+   private initError: Error | null = null;
+   private ragAvailable: boolean | null = null; // null = not probed yet, true/false = probed
+   private availabilityReason: string | null = null;
 
   /**
    * Lazily initialise the RAG pipeline components.
@@ -341,13 +346,65 @@ class RagService {
   }
 
   /**
+   * Probe ChromaDB connectivity once at startup.
+   * Sets the RAG availability state and logs the result.
+   * This should be called once during server initialization.
+   */
+  async probeAvailability(): Promise<void> {
+    // If already probed, don't re-probe
+    if (this.ragAvailable !== null) {
+      return;
+    }
+
+    try {
+      const success = await this.initialize();
+      if (success && this.vectorStore) {
+        const isHealthy = await this.vectorStore.isHealthy();
+        this.ragAvailable = isHealthy;
+        this.availabilityReason = isHealthy ? null : "ChromaDB unavailable";
+        
+        if (isHealthy) {
+          logger.info("[INFO] RAG subsystem initialized successfully.");
+        } else {
+          logger.info("[INFO] ChromaDB not available. Running without RAG. All other AI systems remain fully operational.");
+        }
+      } else {
+        this.ragAvailable = false;
+        this.availabilityReason = "ChromaDB unavailable";
+        logger.info("[INFO] ChromaDB not available. Running without RAG. All other AI systems remain fully operational.");
+      }
+    } catch (error) {
+      this.ragAvailable = false;
+      this.availabilityReason = "ChromaDB unavailable";
+      logger.info("[INFO] ChromaDB not available. Running without RAG. All other AI systems remain fully operational.");
+    }
+  }
+
+  /**
+   * Get the RAG availability status and reason.
+   * Returns cached state from probeAvailability() if available,
+   * otherwise performs a fresh check.
+   */
+  getAvailabilityStatus(): { available: boolean; reason: string | null } {
+    if (this.ragAvailable === null) {
+      // Not probed yet, return false with reason
+      return { available: false, reason: "ChromaDB unavailable" };
+    }
+    return { available: this.ragAvailable, reason: this.availabilityReason };
+  }
+
+  /**
    * Check if the RAG service is initialized and available.
-   * Performs a lightweight connectivity check to verify ChromaDB is reachable.
-   * This check is always dynamic — it never caches results.
+   * Uses cached state from probeAvailability() if available.
    *
    * @returns true if the service is initialized and ChromaDB is reachable
    */
   async isAvailable(): Promise<boolean> {
+    // Return cached state if already probed
+    if (this.ragAvailable !== null) {
+      return this.ragAvailable;
+    }
+
     // If not initialized, try to initialize
     if (!this.retriever) {
       const success = await this.initialize();
@@ -361,7 +418,7 @@ class RagService {
       return false;
     }
 
-    // Perform lightweight connectivity check (no caching)
+    // Perform lightweight connectivity check
     try {
       return await this.vectorStore!.isHealthy();
     } catch (error) {

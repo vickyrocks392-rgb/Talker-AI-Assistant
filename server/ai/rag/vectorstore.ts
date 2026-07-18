@@ -100,15 +100,6 @@ export class RagVectorStore implements VectorStore {
     logger.info(`Chroma URL: ${chromaUrl}`);
     logger.info(`Chroma collection: ${this.config.collectionName}`);
 
-    // Warn if running in production with default localhost config
-    if (appConfig.server.isProduction && !hasExplicitChromaConfig) {
-      logger.warn(
-        "PRODUCTION DETECTED: ChromaDB is configured with default localhost settings. " +
-        "Set CHROMA_HOST, CHROMA_PORT, CHROMA_SSL, and CHROMA_COLLECTION environment variables " +
-        "to point to your production ChromaDB instance.",
-      );
-    }
-
     logger.debug(
       `Initialized vector store: collection=${this.config.collectionName}, dimensions=${this.config.dimensions}`,
     );

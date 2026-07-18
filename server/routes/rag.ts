@@ -77,6 +77,38 @@ const upload = multer({
 
 const router = Router();
 
+// ── RAG Availability Middleware ───────────────────────────────────────
+// Checks if RAG is available and returns 503 if not
+const checkRagAvailable = async (req: any, res: any, next: any) => {
+  const { ragService } = await import("../ai/rag/service");
+  const status = ragService.getAvailabilityStatus();
+  
+  if (!status.available) {
+    res.status(503).json({
+      success: false,
+      message: "Document Retrieval is currently unavailable.",
+    });
+    return;
+  }
+  next();
+};
+
+// ── RAG Upload Availability Middleware ───────────────────────────────────
+// Checks if RAG is available for uploads and returns 503 if not
+const checkRagUploadAvailable = async (req: any, res: any, next: any) => {
+  const { ragService } = await import("../ai/rag/service");
+  const status = ragService.getAvailabilityStatus();
+  
+  if (!status.available) {
+    res.status(503).json({
+      success: false,
+      message: "Document upload is currently unavailable.",
+    });
+    return;
+  }
+  next();
+};
+
 /**
  * POST /api/rag/upload
  *
@@ -85,6 +117,7 @@ const router = Router();
  */
 router.post(
   "/rag/upload",
+  checkRagUploadAvailable,
   (req, res, next) => {
     upload.single("file")(req, res, (err) => {
       if (err) {
@@ -236,7 +269,7 @@ router.post(
  * POST /api/rag/search
  * Perform a semantic search over indexed documents.
  */
-router.post("/rag/search", async (req, res, next) => {
+router.post("/rag/search", checkRagAvailable, async (req, res, next) => {
   const sec = createSecurityMonitor();
   try {
     const { query, k = 5 } = req.body as { query: string; k?: number };
