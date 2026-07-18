@@ -31,6 +31,7 @@ import { RagEmbeddings } from "../ai/rag/embeddings";
 import { RagVectorStore } from "../ai/rag/vectorstore";
 import { RagRetriever } from "../ai/rag/retriever";
 import { createLogger } from "../utils/logger";
+import { getConfig } from "../config/env";
 import { ValidationError, NotFoundError } from "../utils/errors";
 import { getDatabase } from "../db/database";
 import { memoryService } from "../memory/service";

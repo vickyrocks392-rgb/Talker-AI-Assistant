@@ -18,6 +18,7 @@
  */
 
 import { createLogger } from "../../utils/logger";
+import { getConfig } from "../../config/env";
 import { RagEmbeddings } from "./embeddings";
 import { RagVectorStore } from "./vectorstore";
 import { RagRetriever } from "./retriever";
@@ -93,12 +94,21 @@ class RagService {
     try {
       logger.info("Initializing RAG service...");
 
+      // Read Chroma config from the central environment config
+      const appConfig = getConfig();
+      const chromaConfig = {
+        host: appConfig.chroma.host,
+        port: appConfig.chroma.port,
+        ssl: appConfig.chroma.ssl,
+        collectionName: appConfig.chroma.collectionName,
+      };
+
       // Initialize embeddings
       this.embeddings = new RagEmbeddings();
       logger.debug("RAG embeddings initialized");
 
-      // Initialize vector store
-      this.vectorStore = new RagVectorStore(this.embeddings);
+      // Initialize vector store with environment-aware configuration
+      this.vectorStore = new RagVectorStore(this.embeddings, chromaConfig);
       logger.debug("RAG vector store initialized");
 
       // Initialize retriever

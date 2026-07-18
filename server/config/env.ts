@@ -35,6 +35,13 @@ export interface GeminiConfig {
   modelName: string;
 }
 
+export interface ChromaConfig {
+  host: string;
+  port: number;
+  ssl: boolean;
+  collectionName: string;
+}
+
 export interface ViteDevConfig {
   hmrPort: number | undefined;
   disableHmr: boolean;
@@ -46,6 +53,7 @@ export interface AppConfig {
   ollama: OllamaConfig;
   groq: GroqConfig;
   gemini: GeminiConfig;
+  chroma: ChromaConfig;
   vite: ViteDevConfig;
 }
 
@@ -89,6 +97,18 @@ function loadConfig(): AppConfig {
   const geminiApiKey = process.env.GEMINI_API_KEY || "";
   const geminiModelName = process.env.GEMINI_MODEL || "gemini-2.0-flash-exp";
 
+  // --- ChromaDB ---
+  const chromaHost = process.env.CHROMA_HOST || "localhost";
+  const chromaPortStr = process.env.CHROMA_PORT || "8000";
+  const chromaPort = parseInt(chromaPortStr, 10);
+  if (isNaN(chromaPort) || chromaPort < 1 || chromaPort > 65535) {
+    throw new ConfigError(
+      `Invalid CHROMA_PORT: "${chromaPortStr}". Must be a number between 1 and 65535.`,
+    );
+  }
+  const chromaSsl = process.env.CHROMA_SSL === "true";
+  const chromaCollectionName = process.env.CHROMA_COLLECTION || "talker_rag";
+
   // --- Vite dev-server ---
   const hmrPortStr = process.env.HMR_PORT;
   const hmrPort = hmrPortStr ? parseInt(hmrPortStr, 10) : undefined;
@@ -105,6 +125,12 @@ function loadConfig(): AppConfig {
     ollama: { baseUrl, modelName },
     groq: { apiKey: groqApiKey, modelName: groqModelName },
     gemini: { apiKey: geminiApiKey, modelName: geminiModelName },
+    chroma: {
+      host: chromaHost,
+      port: chromaPort,
+      ssl: chromaSsl,
+      collectionName: chromaCollectionName,
+    },
     vite: { hmrPort, disableHmr },
   };
 }

@@ -121,6 +121,8 @@ export interface VectorStoreConfig {
   host?: string;
   /** Port of the ChromaDB server. */
   port?: number;
+  /** Whether to use HTTPS (SSL) for the ChromaDB connection. */
+  ssl?: boolean;
   /** Number of dimensions for stored vectors. */
   dimensions?: number;
 }
@@ -202,6 +204,7 @@ export const DEFAULT_RAG_CONFIG: RagPipelineConfig = {
     collectionName: "talker_rag",
     host: "localhost",
     port: 8000,
+    ssl: false,
   },
   retriever: {
     k: 4,

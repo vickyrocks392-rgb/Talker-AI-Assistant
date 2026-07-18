@@ -7,12 +7,18 @@
  * Pinecone, Qdrant, etc.) can be swapped without changing the pipeline.
  *
  * ChromaDB runs as a client-server instance. The connection target is
- * resolved from the CHROMA_HOST / CHROMA_PORT environment variables
- * (falling back to localhost:8000).
+ * resolved from the central AppConfig (which reads CHROMA_HOST, CHROMA_PORT,
+ * CHROMA_SSL, and CHROMA_COLLECTION from the environment), falling back to
+ * localhost:8000 without SSL for local development.
+ *
+ * In production, all Chroma configuration must be provided via environment
+ * variables. Missing configuration produces a warning but does not crash
+ * the application — the vector store will fail gracefully on first use.
  */
 
 import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { createLogger } from "../../utils/logger";
+import { getConfig } from "../../config/env";
 import type { RagDocument, SearchResult, VectorStoreConfig, VectorStore } from "./types";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 
@@ -20,11 +26,13 @@ const logger = createLogger("RagVectorStore");
 
 /**
  * Default configuration for the Chroma vector store.
+ * These values are used when no config is passed and no env vars are set.
  */
 const DEFAULT_VECTORSTORE_CONFIG: Required<VectorStoreConfig> = {
   collectionName: "talker_rag",
   host: "localhost",
   port: 8000,
+  ssl: false,
   dimensions: 768,
 };
 
@@ -35,6 +43,11 @@ const DEFAULT_VECTORSTORE_CONFIG: Required<VectorStoreConfig> = {
  * The store is lazily initialised — the Chroma collection is created on
  * the first `addDocuments` or `similaritySearch` call.
  *
+ * Configuration resolution order (highest priority first):
+ *   1. Explicit `config` argument passed to constructor
+ *   2. Environment variables (CHROMA_HOST, CHROMA_PORT, CHROMA_SSL, CHROMA_COLLECTION)
+ *   3. DEFAULT_VECTORSTORE_CONFIG hardcoded defaults
+ *
  * @implements {VectorStore}
  */
 export class RagVectorStore implements VectorStore {
@@ -43,26 +56,61 @@ export class RagVectorStore implements VectorStore {
   private store: Chroma | null = null;
 
   constructor(embeddings: EmbeddingsInterface, config?: Partial<VectorStoreConfig>) {
-    // Resolve the Chroma server connection from the environment, falling
-    // back to localhost:8000 when the variables are not defined.
-    const chromaHost = process.env.CHROMA_HOST || DEFAULT_VECTORSTORE_CONFIG.host;
-    const chromaPort = process.env.CHROMA_PORT
-      ? parseInt(process.env.CHROMA_PORT, 10)
-      : DEFAULT_VECTORSTORE_CONFIG.port;
+    // Resolve Chroma configuration from the central config (env vars) first,
+    // then allow explicit overrides via the config argument.
+    const appConfig = getConfig();
+    const envHost = appConfig.chroma.host;
+    const envPort = appConfig.chroma.port;
+    const envSsl = appConfig.chroma.ssl;
+    const envCollection = appConfig.chroma.collectionName;
 
+    // Detect if the user has explicitly set any Chroma env vars.
+    // If CHROMA_HOST is set (and is not "localhost"), we assume production config.
+    const hasExplicitChromaConfig = !!(
+      process.env.CHROMA_HOST ||
+      process.env.CHROMA_PORT ||
+      process.env.CHROMA_SSL ||
+      process.env.CHROMA_COLLECTION
+    );
+
+    // Merge: env vars → defaults, then explicit config overrides all
     this.config = {
       ...DEFAULT_VECTORSTORE_CONFIG,
-      host: chromaHost,
-      port: chromaPort,
+      host: envHost,
+      port: envPort,
+      ssl: envSsl,
+      collectionName: envCollection,
       ...config,
     };
     this.embeddings = embeddings;
 
-    logger.info("Chroma mode: remote");
-    logger.info(`Chroma host: ${this.config.host}:${this.config.port}`);
+    // Build the connection URL based on SSL setting
+    const protocol = this.config.ssl ? "https" : "http";
+    const chromaUrl = `${protocol}://${this.config.host}:${this.config.port}`;
+
+    // Log which configuration mode is active
+    if (hasExplicitChromaConfig) {
+      logger.info(`Chroma configuration: environment (CHROMA_HOST=${this.config.host}, CHROMA_PORT=${this.config.port}, CHROMA_SSL=${this.config.ssl})`);
+    } else if (config) {
+      logger.info(`Chroma configuration: explicit (host=${this.config.host}, port=${this.config.port}, ssl=${this.config.ssl})`);
+    } else {
+      logger.info(`Chroma configuration: defaults (host=${this.config.host}, port=${this.config.port}, ssl=${this.config.ssl})`);
+    }
+
+    logger.info(`Chroma URL: ${chromaUrl}`);
+    logger.info(`Chroma collection: ${this.config.collectionName}`);
+
+    // Warn if running in production with default localhost config
+    if (appConfig.server.isProduction && !hasExplicitChromaConfig) {
+      logger.warn(
+        "PRODUCTION DETECTED: ChromaDB is configured with default localhost settings. " +
+        "Set CHROMA_HOST, CHROMA_PORT, CHROMA_SSL, and CHROMA_COLLECTION environment variables " +
+        "to point to your production ChromaDB instance.",
+      );
+    }
 
     logger.debug(
-      `Initialized vector store: collection=${this.config.collectionName}`,
+      `Initialized vector store: collection=${this.config.collectionName}, dimensions=${this.config.dimensions}`,
     );
   }
 
@@ -74,10 +122,13 @@ export class RagVectorStore implements VectorStore {
     if (!this.store) {
       logger.debug(`Creating Chroma collection: ${this.config.collectionName}`);
 
-      // Use client-server ChromaDB connection.
-      // ChromaDB 3.x requires a running server - we connect via HTTP.
+      // Build the connection URL respecting the SSL setting.
+      // In production with CHROMA_SSL=true, this will use https://.
+      const protocol = this.config.ssl ? "https" : "http";
+      const chromaUrl = `${protocol}://${this.config.host}:${this.config.port}`;
+
       this.store = new Chroma(this.embeddings, {
-        url: `http://${this.config.host}:${this.config.port}`,
+        url: chromaUrl,
         collectionName: this.config.collectionName,
         numDimensions: this.config.dimensions,
       });
