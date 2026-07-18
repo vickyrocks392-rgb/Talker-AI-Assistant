@@ -316,7 +316,6 @@ noryx/
 │   ├── Developer/             #   Developer guide
 │   └── Deployment/            #   Deployment guide
 │
-├── screenshots/               # Application screenshots
 ├── storage/                   # SQLite database files
 └── assets/                    # Static assets
 ```
