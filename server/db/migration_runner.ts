@@ -16,7 +16,7 @@ import { createLogger } from "../utils/logger";
 
 const logger = createLogger("MigrationRunner");
 
-const MIGRATIONS_DIR = path.join(import.meta.dirname, "migrations");
+const MIGRATIONS_DIR = path.join(__dirname, "migrations");
 
 /**
  * Ensures the schema_migrations tracking table exists.

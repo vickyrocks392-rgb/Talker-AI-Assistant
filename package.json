@@ -24,7 +24,7 @@
     "axios": "^1.6.2",
     "better-sqlite3": "^12.11.1",
     "chromadb": "^3.5.0",
-    "dotenv": "^17.2.3",
+    "dotenv": "^16.6.1",
     "express": "^4.21.2",
     "firebase": "^12.14.0",
     "leaflet": "^1.9.4",
