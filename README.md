@@ -9,7 +9,7 @@
   </p>
   <br>
   <p>
-    <a href="https://talker-ai-assistant.onrender.com"><code>🌐 Live Demo</code></a>
+    <a href="https://noryx.onrender.com/"><code>🌐 Live Demo</code></a>
     &nbsp;&nbsp;
     <a href="#-quick-start"><code>🚀 Quick Start</code></a>
     &nbsp;&nbsp;
