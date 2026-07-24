@@ -335,8 +335,8 @@ noryx/
 
 ```bash
 # Clone the repository
-git clone https://github.com/vickyrocks392-rgb/Talker-AI-Assistant.git
-cd Talker-AI-Assistant
+git clone https://github.com/vickyrocks392-rgb/Noryx-AI.git
+cd Noryx-AI
 
 # Install dependencies
 npm install
@@ -467,13 +467,13 @@ Noryx stands on the shoulders of incredible open‑source projects and communiti
 <p align="center">
   <b>Built with ❤️ for AI engineers who demand production‑grade quality.</b>
   <br><br>
-  <a href="https://talker-ai-assistant.onrender.com">🌐 Live Demo</a>
+  <a href="https://noryx.onrender.com/">🌐 Live Demo</a>
   &nbsp;·&nbsp;
   <a href="docs/README.md">📚 Documentation</a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/vickyrocks392-rgb/Talker-AI-Assistant/issues">🐛 Report Bug</a>
+  <a href="https://github.com/vickyrocks392-rgb/Noryx-AI/issues">🐛 Report Bug</a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/vickyrocks392-rgb/Talker-AI-Assistant/discussions">💬 Discussion</a>
+  <a href="https://github.com/vickyrocks392-rgb/Noryx-AI/discussions">💬 Discussion</a>
 </p>
 
 <p align="center">
